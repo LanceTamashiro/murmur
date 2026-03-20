@@ -39,6 +39,10 @@ final class TextInjectionService {
             }
         }
 
+        if !hasAccessibilityPermission {
+            logger.warning("inject: accessibility not granted — CGEvent.post may silently fail. Grant accessibility in System Settings > Privacy > Accessibility.")
+        }
+
         // Re-activate target app before clipboard paste (focus may have drifted)
         if let targetApp = NSRunningApplication(processIdentifier: targetContext.processID) {
             logger.info("inject: re-activating \(targetContext.displayName) before paste")

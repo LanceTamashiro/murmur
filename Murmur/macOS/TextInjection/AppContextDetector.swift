@@ -34,6 +34,13 @@ final class AppContextDetector: ObservableObject {
             return
         }
 
+        // Skip if Murmur itself is frontmost — preserve the last external app as
+        // the injection target. Murmur uses non-activating panels but may still
+        // become frontmost on launch or during certain system events.
+        if frontApp.bundleIdentifier == Bundle.main.bundleIdentifier {
+            return
+        }
+
         let context = AppContext(
             bundleIdentifier: frontApp.bundleIdentifier ?? "unknown",
             displayName: frontApp.localizedName ?? "Unknown",
