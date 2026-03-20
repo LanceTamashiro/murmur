@@ -1,0 +1,9 @@
+--indent 4
+--wraparguments before-first
+--wrapcollections before-first
+--maxwidth 120
+--trailingCommas always
+--importgrouping alpha
+--self remove
+--header strip
+--commas always

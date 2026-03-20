@@ -1,0 +1,21 @@
+excluded:
+  - .build
+  - DerivedData
+  - Packages/MurmurCore/.build
+
+opt_in_rules:
+  - empty_count
+  - force_unwrapping
+
+only_rules: []
+
+force_unwrapping:
+  severity: error
+
+disabled_rules:
+  - file_length
+  - type_body_length
+  - todo
+
+analyzer_rules:
+  - unused_import

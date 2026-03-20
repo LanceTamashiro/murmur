@@ -1,0 +1,72 @@
+name: Murmur
+options:
+  bundleIdPrefix: com.unconventionalpsychotherapy
+  deploymentTarget:
+    macOS: "26.0"
+  xcodeVersion: "26.3"
+  createIntermediateGroups: true
+  defaultConfig: Debug
+  groupSortPosition: top
+  generateEmptyDirectories: true
+
+settings:
+  base:
+    SWIFT_VERSION: "6"
+    MACOSX_DEPLOYMENT_TARGET: "26.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    PRODUCT_BUNDLE_IDENTIFIER: com.unconventionalpsychotherapy.murmur
+    DEVELOPMENT_TEAM: ""
+    CODE_SIGN_STYLE: Automatic
+    ENABLE_HARDENED_RUNTIME: true
+    INFOPLIST_KEY_NSMicrophoneUsageDescription: "Murmur needs microphone access to transcribe your voice."
+
+configs:
+  Debug: debug
+  Release: release
+
+packages:
+  MurmurCore:
+    path: Packages/MurmurCore
+  swift-async-algorithms:
+    url: https://github.com/apple/swift-async-algorithms.git
+    from: "1.0.0"
+
+targets:
+  Murmur:
+    type: application
+    platform: macOS
+    sources:
+      - path: Murmur
+        excludes:
+          - "**/.DS_Store"
+    dependencies:
+      - package: MurmurCore
+        product: Models
+      - package: MurmurCore
+        product: NoteStore
+      - package: MurmurCore
+        product: SpeechEngine
+      - package: MurmurCore
+        product: PersonalDictionary
+      - package: MurmurCore
+        product: TextInjection
+      - package: swift-async-algorithms
+        product: AsyncAlgorithms
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.unconventionalpsychotherapy.murmur
+        GENERATE_INFOPLIST_FILE: true
+        INFOPLIST_KEY_LSApplicationCategoryType: "public.app-category.productivity"
+        INFOPLIST_KEY_CFBundleDisplayName: Murmur
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: "Murmur needs microphone access to transcribe your voice."
+        INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: "Murmur uses on-device speech recognition to transcribe your dictation."
+        CODE_SIGN_ENTITLEMENTS: Murmur/Resources/Murmur.entitlements
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        CODE_SIGN_IDENTITY: "-"
+    entitlements:
+      path: Murmur/Resources/Murmur.entitlements
+      properties:
+        com.apple.security.app-sandbox: false
+        com.apple.security.device.audio-input: true
+        com.apple.security.network.client: true
+        com.apple.security.files.user-selected.read-write: true
