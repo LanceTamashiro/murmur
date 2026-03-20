@@ -31,6 +31,7 @@ final class DictationViewModel {
     private var personalDictionary: PersonalDictionaryService?
     private var currentSessionID: UUID?
     private var sessionStartTime: Date?
+    private var startupTask: Task<Void, Never>?
     private var eventTask: Task<Void, Never>?
     private var amplitudeTask: Task<Void, Never>?
 
@@ -113,7 +114,7 @@ final class DictationViewModel {
             destinationLabel = "New Note"
         }
 
-        Task {
+        startupTask = Task {
             do {
                 // Ensure microphone permission before touching audio hardware
                 let currentMicPerm = AVAudioApplication.shared.recordPermission
@@ -126,6 +127,12 @@ final class DictationViewModel {
                         showErrorThenReset("Microphone access denied — enable in System Settings > Privacy > Microphone")
                         return
                     }
+                }
+
+                // Bail out if stop was called while awaiting mic permission
+                guard state == .recording else {
+                    logger.info("startDictation: state changed during mic permission — aborting")
+                    return
                 }
 
                 // Ensure speech recognition authorization before starting
@@ -144,9 +151,24 @@ final class DictationViewModel {
                     return
                 }
 
+                // Bail out if stop was called while awaiting speech auth
+                guard state == .recording else {
+                    logger.info("startDictation: state changed during speech auth — aborting")
+                    return
+                }
+
                 let vocabulary = (try? personalDictionary?.vocabularyWords()) ?? []
                 logger.info("startDictation: starting speech session...")
                 let sessionID = try await speechEngine.startSession(locale: nil, customVocabulary: vocabulary)
+
+                // Bail out if stop was called while starting the session —
+                // clean up the orphan session that just started
+                guard state == .recording else {
+                    logger.info("startDictation: state changed during startSession — stopping orphan session")
+                    await speechEngine.stopSession()
+                    return
+                }
+
                 currentSessionID = sessionID
                 logger.info("startDictation: session started successfully (id=\(sessionID))")
 
@@ -163,10 +185,15 @@ final class DictationViewModel {
                         pushAmplitude(amplitude)
                     }
                 }
+            } catch is CancellationError {
+                // Task was cancelled by stopDictation() — stopDictation already
+                // called resetState(), so just bail silently.
+                logger.info("startDictation: startup task cancelled")
             } catch {
                 logger.error("startDictation: FAILED — \(error)")
                 showErrorThenReset(error.localizedDescription)
             }
+            startupTask = nil
         }
     }
 
@@ -179,9 +206,20 @@ final class DictationViewModel {
         guard let speechEngine, state == .recording else { return }
         state = .processing
 
-        Task {
-            await speechEngine.stopSession()
-            // The final transcription event will trigger text injection/save
+        if currentSessionID != nil {
+            // Session is running — stop it normally
+            Task {
+                await speechEngine.stopSession()
+                // The sessionEnded event will trigger text injection/save
+            }
+        } else {
+            // Session hasn't started yet — the startup Task is still in its async
+            // preamble (e.g., waiting for mic permission). Cancel it and reset.
+            // The state guards in startDictation will also see state != .recording.
+            startupTask?.cancel()
+            startupTask = nil
+            logger.info("stopDictation: cancelled startup (no session yet)")
+            resetState()
         }
     }
 
@@ -253,22 +291,14 @@ final class DictationViewModel {
                 let result = await injectionService.inject(text: text)
                 logger.info("finalizeDictation: injection result = \(String(describing: result))")
 
-                if case .skipped(reason: .noAccessibilityPermission) = result {
-                    state = .error("Opening Accessibility settings — please grant access to Murmur")
-
-                    let granted = await injectionService.requestAccessibilityAndWait(timeout: 8.0)
-
-                    if granted {
-                        logger.info("finalizeDictation: AX permission granted, retrying injection")
-                        state = .processing
-                        let retryResult = await injectionService.inject(text: text)
-                        logger.info("finalizeDictation: retry injection result = \(String(describing: retryResult))")
-                    } else {
-                        state = .error("Text saved as note. Grant Accessibility access to enable injection into other apps.")
-                        try? await Task.sleep(for: .seconds(4.0))
-                        resetState()
-                        return
-                    }
+                if case .success(strategy: .clipboardCopy) = result {
+                    // Text was copied to clipboard but not auto-pasted (AX + CGEvent both failed).
+                    // Show a brief notification so the user knows to paste manually.
+                    liveTranscript = "Copied to clipboard — press ⌘V to paste"
+                    state = .completed
+                    try? await Task.sleep(for: .seconds(3.0))
+                    resetState()
+                    return
                 }
             }
 
@@ -321,6 +351,8 @@ final class DictationViewModel {
 
     private func resetState() {
         state = .idle
+        startupTask?.cancel()
+        startupTask = nil
         eventTask?.cancel()
         amplitudeTask?.cancel()
         eventTask = nil

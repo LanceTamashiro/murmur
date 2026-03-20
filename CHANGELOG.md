@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.3] - 2026-03-20
+
+### Fixed
+- **Fixed text injection permanently failing** — root cause was `CODE_SIGN_IDENTITY: "-"` (ad-hoc signing) which generated a new code signature on every Xcode rebuild, causing macOS TCC to "forget" the accessibility permission grant. Switched to proper Apple Development signing with team ID.
+- Fixed race condition where cancelling dictation during startup would surface a CancellationError instead of cleanly resetting to idle.
+
+### Changed
+- Code signing: `CODE_SIGN_IDENTITY` changed from `"-"` (ad-hoc) to `"Apple Development"` with `DEVELOPMENT_TEAM: "6JV343TBM7"`. TCC accessibility grants now persist across rebuilds.
+- Injection activation delay increased from 150ms to 300ms for more reliable target app focus.
+- Clipboard paste fallback now always attempted (removed `AXIsProcessTrusted()` gate).
+- AXTextInjector now logs raw `AXError` codes for better diagnostics (distinguishes apiDisabled vs cannotComplete vs noValue).
+- Test count: 64 → 79 (64 MurmurCore + 15 MurmurTests).
+
 ## [0.1.2] - 2026-03-20
 
 ### Fixed

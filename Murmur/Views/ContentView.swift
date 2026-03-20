@@ -2,15 +2,41 @@ import SwiftUI
 import SwiftData
 import Models
 
+enum SidebarDestination: Hashable {
+    case notes
+    case trash
+}
+
 struct ContentView: View {
     @State private var selectedNoteID: PersistentIdentifier?
     @State private var searchText = ""
+    @State private var sidebarDestination: SidebarDestination = .notes
+
+    @Query(filter: #Predicate<Note> { $0.isTrashed })
+    private var trashedNotes: [Note]
 
     var body: some View {
         NavigationSplitView {
-            NoteListView(selectedNoteID: $selectedNoteID, searchText: $searchText)
+            VStack(spacing: 0) {
+                Picker("View", selection: $sidebarDestination) {
+                    Label("Notes", systemImage: "note.text")
+                        .tag(SidebarDestination.notes)
+                    Label("Trash", systemImage: "trash")
+                        .tag(SidebarDestination.trash)
+                }
+                .pickerStyle(.segmented)
+                .padding(.horizontal)
+                .padding(.vertical, 8)
+
+                switch sidebarDestination {
+                case .notes:
+                    NoteListView(selectedNoteID: $selectedNoteID, searchText: $searchText)
+                case .trash:
+                    TrashView()
+                }
+            }
         } detail: {
-            if let selectedNoteID {
+            if sidebarDestination == .notes, let selectedNoteID {
                 NoteDetailView(noteID: selectedNoteID)
             } else {
                 ContentUnavailableView(

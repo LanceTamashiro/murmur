@@ -16,6 +16,10 @@ public final class MockSpeechEngine: SpeechEngineProtocol, @unchecked Sendable {
     public var mockAuthorizationResult: SpeechAuthorizationStatus = .authorized
     public var mockTranscriptionText: String = "Hello, this is a test transcription."
     public var mockMicrophonePermissionGranted: Bool = true
+    /// Delay in seconds before requestAuthorization() returns (simulates slow permission dialogs)
+    public var authorizationDelay: TimeInterval = 0
+    /// Delay in seconds before startSession() returns (simulates slow engine startup)
+    public var startSessionDelay: TimeInterval = 0
     public var startSessionCallCount: Int = 0
     public var stopSessionCallCount: Int = 0
     public var cancelSessionCallCount: Int = 0
@@ -33,6 +37,9 @@ public final class MockSpeechEngine: SpeechEngineProtocol, @unchecked Sendable {
     }
 
     public func requestAuthorization() async -> SpeechAuthorizationStatus {
+        if authorizationDelay > 0 {
+            try? await Task.sleep(for: .seconds(authorizationDelay))
+        }
         _authorizationStatus = mockAuthorizationResult
         return _authorizationStatus
     }
@@ -41,6 +48,10 @@ public final class MockSpeechEngine: SpeechEngineProtocol, @unchecked Sendable {
         startSessionCallCount += 1
         lastLocale = locale
         lastCustomVocabulary = customVocabulary
+
+        if startSessionDelay > 0 {
+            try await Task.sleep(for: .seconds(startSessionDelay))
+        }
 
         guard _authorizationStatus == .authorized else {
             throw SpeechEngineError.notAuthorized

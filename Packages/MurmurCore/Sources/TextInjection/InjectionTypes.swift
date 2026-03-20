@@ -17,6 +17,8 @@ public enum InjectionStrategy: String, Sendable {
     case accessibilityDirect
     case accessibilityKeystrokes
     case clipboardPaste
+    /// Text was copied to clipboard but not auto-pasted (user must Cmd+V manually)
+    case clipboardCopy
 }
 
 public enum InjectionError: Error, Sendable {

@@ -40,6 +40,7 @@ xcodegen generate
 - **System callback threading:** `SFSpeechRecognizer.requestAuthorization` fires on a background queue. `withCheckedContinuation` does NOT hop back to `@MainActor` — use `await MainActor.run { }` or extract logic into `@MainActor` classes. Never rely on `@MainActor` annotations on struct methods for continuation safety.
 - **CGEvent.post requires accessibility:** `CGEvent.post(tap: .cghidEventTap)` silently drops events without accessibility permission. Always check `AXIsProcessTrusted()` before attempting clipboard paste injection.
 - **Onboarding before setup:** `AppDelegate.setup()` only runs after `onboardingCompleted = true`. All permission requests happen in the onboarding flow, not in setup.
+- **Code signing must use Apple Development (not ad-hoc):** `CODE_SIGN_IDENTITY` must be `"Apple Development"` with a real `DEVELOPMENT_TEAM`. Ad-hoc signing (`"-"`) generates a new code signature per rebuild, causing TCC to forget accessibility grants. This was the root cause of persistent text injection failures.
 - **Xcode debug builds + accessibility:** TCC accessibility grants may not take effect until the debug build is relaunched. Onboarding handles this with a "I've already granted access" fallback button.
 - **Non-sandboxed debug plist:** Xcode debug builds use `~/Library/Preferences/com.unconventionalpsychotherapy.murmur.plist`, not the sandboxed container. Reset onboarding with: `defaults write ~/Library/Preferences/com.unconventionalpsychotherapy.murmur.plist onboardingCompleted -bool false`
 
@@ -66,8 +67,10 @@ xcodegen generate
 
 ## Testing
 
-- 60 tests across 5 suites: NoteStoreService, PersonalDictionaryService, MockSpeechEngine, OnboardingPermissionCoordinator, ThreadingSafety
+- 79 tests across 9 suites: NoteStoreService, PersonalDictionaryService, MockSpeechEngine, OnboardingPermissionCoordinator, ThreadingSafety (MurmurCore: 64), plus DictationViewModelRace, TextInjection, MockSpeechEngineRace, AppDelegateSetup (MurmurTests: 15)
 - All tests use in-memory `ModelContainer`, `MockSpeechEngine`, or `BackgroundCallbackPermissionProvider`
-- Tests cover: CRUD, search, trash/restore, auth flows, mic permission, session lifecycle, event streaming, error types, threading safety, onboarding permission flow
+- Tests cover: CRUD, search, trash/restore, auth flows, mic permission, session lifecycle, event streaming, error types, threading safety, onboarding permission flow, race conditions, text injection into TextEdit
+- TextInjection tests launch TextEdit, inject text via AX API, and verify it arrived — require accessibility permission (skip if not granted)
 - Swift 6 strict concurrency: async stream tests use `actor`-based collectors for Sendable safety
 - Threading regression tests: `BackgroundCallbackPermissionProvider` fires callbacks on `DispatchQueue.global()` to reproduce the exact crash scenario from `SFSpeechRecognizer`
+- Known: `BSBlockSentinel:FBSWorkspaceScenesClient` crash in macOS 26 beta causes test-host restart when running all suites together. All tests pass individually — run suites separately with `-only-testing:` if needed.

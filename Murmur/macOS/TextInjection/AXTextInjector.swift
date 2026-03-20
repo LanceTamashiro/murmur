@@ -1,20 +1,27 @@
 import AppKit
 import ApplicationServices
 import TextInjection
+import os.log
+
+private let logger = Logger(subsystem: "com.unconventionalpsychotherapy.murmur", category: "AXTextInjector")
 
 final class AXTextInjector {
 
-    func inject(text: String) -> InjectionResult {
-        let systemWide = AXUIElementCreateSystemWide()
+    func inject(text: String, targetPID: pid_t) -> InjectionResult {
+        // Target the specific application by PID rather than querying system-wide focus.
+        // System-wide focus can return Murmur's own HUD element or nil when Murmur is
+        // in front — targeting the app directly ensures we find its focused text field.
+        let targetApp = AXUIElementCreateApplication(targetPID)
 
         var focusedElement: AnyObject?
         let focusResult = AXUIElementCopyAttributeValue(
-            systemWide,
+            targetApp,
             kAXFocusedUIElementAttribute as CFString,
             &focusedElement
         )
 
         guard focusResult == .success, let element = focusedElement else {
+            logger.warning("AX focusedElement query failed: error=\(focusResult.rawValue) (apiDisabled=-25211, cannotComplete=-25204, noValue=-25212)")
             return .failed(error: .noFocusedElement)
         }
 

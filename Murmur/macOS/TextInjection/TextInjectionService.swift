@@ -35,38 +35,44 @@ final class TextInjectionService {
             return .skipped(reason: .noFocusedTextField)
         }
 
-        logger.info("inject: target app = \(targetContext.displayName) (pid=\(targetContext.processID)), AX=\(self.hasAccessibilityPermission)")
+        let axTrusted = hasAccessibilityPermission
+        logger.info("inject: target app = \(targetContext.displayName) (pid=\(targetContext.processID)), AX=\(axTrusted)")
 
-        // Try accessibility injection first
-        if hasAccessibilityPermission {
-            let result = axInjector.inject(text: text)
-            logger.info("inject: AX result = \(String(describing: result))")
-            switch result {
-            case .success:
-                return result
-            case .failed, .skipped:
-                // Fall through to clipboard
-                break
-            }
-        }
-
-        // CGEvent.post requires accessibility — without it, Cmd+V is silently dropped
-        if !hasAccessibilityPermission {
-            logger.error("inject: accessibility permission required for Cmd+V paste — grant in System Settings > Privacy > Accessibility")
-            return .skipped(reason: .noAccessibilityPermission)
-        }
-
-        // Re-activate target app before clipboard paste (focus may have drifted)
+        // Reactivate the target app BEFORE any injection attempt.
+        // Murmur's HUD or main window may have taken focus — the target app
+        // must be frontmost for both AX and clipboard injection to work.
         if let targetApp = NSRunningApplication(processIdentifier: targetContext.processID) {
-            logger.info("inject: re-activating \(targetContext.displayName) before paste")
+            logger.info("inject: re-activating \(targetContext.displayName) before injection")
             targetApp.activate()
-            try? await Task.sleep(for: .milliseconds(100))
+            try? await Task.sleep(for: .milliseconds(300))
         }
 
-        // Clipboard fallback
+        // Try AX direct injection, targeting the specific app by PID.
+        // AXIsProcessTrusted() can return stale false in Xcode debug builds
+        // even when permission is granted — the AX API calls return proper errors.
+        let axResult = axInjector.inject(text: text, targetPID: targetContext.processID)
+        logger.info("inject: AX result = \(String(describing: axResult))")
+        if case .success = axResult {
+            return axResult
+        }
+
+        // Clipboard paste (Cmd+V via CGEvent.post) — always attempt as fallback.
+        // With proper code signing, AXIsProcessTrusted() is reliable. CGEvent.post
+        // silently drops events without permission, but that's caught by the final
+        // clipboard-copy fallback below.
         let clipResult = await clipboardInjector.inject(text: text)
-        logger.info("inject: clipboard result = \(String(describing: clipResult))")
-        return clipResult
+        logger.info("inject: clipboard paste result = \(String(describing: clipResult))")
+        if case .success = clipResult {
+            return clipResult
+        }
+
+        // Fallback: copy text to clipboard without auto-pasting.
+        // NSPasteboard requires no special permissions — always works.
+        logger.info("inject: injection failed (AX=\(axTrusted)) — copying to clipboard only")
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(text, forType: .string)
+        return .success(strategy: .clipboardCopy)
     }
 
     /// Prompt the user for accessibility permission, open System Settings,

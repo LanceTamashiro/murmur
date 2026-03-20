@@ -16,11 +16,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var hudWindow: DictationHUDWindow?
     private var dictationViewModel: DictationViewModel?
     private var textInjectionService: TextInjectionService?
+    private var setupCompleted = false
 
     func setup(
         modelContainer: ModelContainer,
         dictationViewModel: DictationViewModel
     ) {
+        guard !setupCompleted else { return }
+        setupCompleted = true
+
         self.dictationViewModel = dictationViewModel
 
         // Set up text injection
@@ -43,8 +47,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             personalDictionary: personalDictionary
         )
 
-        // Permissions (mic + speech + accessibility) are handled during onboarding.
-        // No need to request them here — setup() only runs after onboarding completes.
+        // Re-verify mic + speech permissions on every launch — they may have been
+        // revoked since onboarding completed. This is a no-op if already granted.
+        dictationViewModel.requestAuthorizationIfNeeded()
+
+        // Prompt for accessibility permission if not granted — required for text
+        // injection (AX API) and global hotkey monitoring (CGEvent). The prompt
+        // option opens the System Settings dialog directing the user to grant access.
+        if !AXIsProcessTrusted() && ProcessInfo.processInfo.environment["XCTestBundlePath"] == nil {
+            let options = ["AXTrustedCheckOptionPrompt": true] as CFDictionary
+            AXIsProcessTrustedWithOptions(options)
+            logger.warning("setup: accessibility permission not granted — prompted user")
+        }
 
         // Set up menu bar
         let menuBar = MenuBarController()
