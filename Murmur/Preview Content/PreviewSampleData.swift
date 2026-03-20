@@ -8,9 +8,9 @@ let previewContainer: ModelContainer = {
     let container = try! ModelContainer(for: schema, configurations: [config])
 
     let sampleNotes = [
-        Note(title: "Meeting Notes", bodyMarkdown: "Discussed the Q1 roadmap and team priorities for the next sprint."),
-        Note(title: "Quick Thought", bodyMarkdown: "Remember to follow up with Sarah about the documentation review."),
-        Note(title: "Session Notes - Client A", bodyMarkdown: "Progress on CBT exercises. Client reports improved sleep patterns."),
+        Note(bodyMarkdown: "Discussed the Q1 roadmap and team priorities for the next sprint."),
+        Note(bodyMarkdown: "Remember to follow up with Sarah about the documentation review."),
+        Note(bodyMarkdown: "Progress on CBT exercises. Client reports improved sleep patterns."),
     ]
 
     for note in sampleNotes {

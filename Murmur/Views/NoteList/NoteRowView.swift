@@ -6,16 +6,12 @@ struct NoteRowView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(note.title)
-                .font(.headline)
-                .lineLimit(1)
-            Text(note.bodyMarkdown.prefix(100))
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(2)
-            Text(note.updatedAt, style: .relative)
+            Text(note.createdAt, format: .dateTime.month(.abbreviated).day().hour().minute())
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
+            Text(note.bodyMarkdown.isEmpty ? "New Note" : String(note.bodyMarkdown.prefix(100)))
+                .font(.callout)
+                .lineLimit(2)
         }
         .padding(.vertical, 2)
     }

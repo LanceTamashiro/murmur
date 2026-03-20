@@ -6,18 +6,10 @@ struct NoteEditorView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            TextField("Title", text: $note.title)
-                .font(.title)
-                .textFieldStyle(.plain)
-                .padding(.horizontal)
-                .padding(.top)
-
-            Divider()
-                .padding(.horizontal)
-
             TextEditor(text: $note.bodyMarkdown)
                 .font(.body)
                 .padding(.horizontal, 12)
+                .padding(.top, 12)
                 .scrollContentBackground(.hidden)
 
             EditorToolbar(note: note)
@@ -26,13 +18,10 @@ struct NoteEditorView: View {
             note.updateWordCount()
             note.updatedAt = Date()
         }
-        .onChange(of: note.title) {
-            note.updatedAt = Date()
-        }
     }
 }
 
 #Preview {
-    NoteEditorView(note: Note(title: "Sample Note", bodyMarkdown: "Hello world, this is a test."))
+    NoteEditorView(note: Note(bodyMarkdown: "Hello world, this is a test."))
         .frame(width: 500, height: 400)
 }

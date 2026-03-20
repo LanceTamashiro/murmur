@@ -13,7 +13,6 @@ struct NoteListView: View {
     private var filteredNotes: [Note] {
         if searchText.isEmpty { return notes }
         return notes.filter {
-            $0.title.localizedCaseInsensitiveContains(searchText) ||
             $0.bodyMarkdown.localizedCaseInsensitiveContains(searchText)
         }
     }
@@ -67,7 +66,7 @@ struct NoteListView: View {
     }
 
     private func createNote() {
-        let note = Note(title: "Untitled Note")
+        let note = Note(bodyMarkdown: "")
         modelContext.insert(note)
         selectedNoteID = note.persistentModelID
     }

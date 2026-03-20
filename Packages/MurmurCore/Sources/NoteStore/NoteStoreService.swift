@@ -11,8 +11,8 @@ public final class NoteStoreService: NoteStoreProtocol {
     }
 
     @discardableResult
-    public func createNote(title: String, bodyMarkdown: String, sourceApp: String? = nil, language: String? = nil) throws -> Note {
-        let note = Note(title: title, bodyMarkdown: bodyMarkdown, sourceApp: sourceApp, language: language)
+    public func createNote(bodyMarkdown: String, sourceApp: String? = nil, language: String? = nil) throws -> Note {
+        let note = Note(bodyMarkdown: bodyMarkdown, sourceApp: sourceApp, language: language)
         modelContext.insert(note)
         try modelContext.save()
         return note
@@ -25,9 +25,8 @@ public final class NoteStoreService: NoteStoreProtocol {
         return try modelContext.fetch(descriptor).first
     }
 
-    public func updateNote(_ id: UUID, title: String? = nil, bodyMarkdown: String? = nil, isPinned: Bool? = nil) throws {
+    public func updateNote(_ id: UUID, bodyMarkdown: String? = nil, isPinned: Bool? = nil) throws {
         guard let note = try note(for: id) else { return }
-        if let title { note.title = title }
         if let bodyMarkdown {
             note.bodyMarkdown = bodyMarkdown
             note.updateWordCount()
@@ -101,10 +100,8 @@ public final class NoteStoreService: NoteStoreProtocol {
 
     public func search(query: String, limit: Int = 50) throws -> [Note] {
         let predicate = #Predicate<Note> {
-            $0.isTrashed == false && (
-                $0.title.localizedStandardContains(query) ||
+            $0.isTrashed == false &&
                 $0.bodyMarkdown.localizedStandardContains(query)
-            )
         }
         var descriptor = FetchDescriptor(predicate: predicate, sortBy: [SortDescriptor(\Note.updatedAt, order: .reverse)])
         descriptor.fetchLimit = limit

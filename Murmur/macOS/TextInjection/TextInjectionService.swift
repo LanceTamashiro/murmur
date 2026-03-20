@@ -69,6 +69,28 @@ final class TextInjectionService {
         return clipResult
     }
 
+    /// Prompt the user for accessibility permission, open System Settings,
+    /// and poll for up to `timeout` seconds. Returns true if permission was granted.
+    func requestAccessibilityAndWait(timeout: TimeInterval = 8.0) async -> Bool {
+        let options = ["AXTrustedCheckOptionPrompt": true] as CFDictionary
+        let alreadyTrusted = AXIsProcessTrustedWithOptions(options)
+        if alreadyTrusted { return true }
+
+        openAccessibilityPreferences()
+
+        let start = Date()
+        while Date().timeIntervalSince(start) < timeout {
+            try? await Task.sleep(for: .milliseconds(500))
+            if AXIsProcessTrusted() {
+                logger.info("requestAccessibilityAndWait: permission granted after \(Date().timeIntervalSince(start))s")
+                return true
+            }
+        }
+
+        logger.warning("requestAccessibilityAndWait: timed out after \(timeout)s — permission still not granted")
+        return false
+    }
+
     func openAccessibilityPreferences() {
         let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!
         NSWorkspace.shared.open(url)

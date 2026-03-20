@@ -4,9 +4,9 @@ import Models
 @MainActor
 public protocol NoteStoreProtocol: AnyObject {
     @discardableResult
-    func createNote(title: String, bodyMarkdown: String, sourceApp: String?, language: String?) throws -> Note
+    func createNote(bodyMarkdown: String, sourceApp: String?, language: String?) throws -> Note
     func note(for id: UUID) throws -> Note?
-    func updateNote(_ id: UUID, title: String?, bodyMarkdown: String?, isPinned: Bool?) throws
+    func updateNote(_ id: UUID, bodyMarkdown: String?, isPinned: Bool?) throws
     func trashNote(_ id: UUID) throws
     func restoreNote(_ id: UUID) throws
     func deleteNote(_ id: UUID) throws

@@ -18,13 +18,12 @@ public final class Note {
 
     public init(
         id: UUID = UUID(),
-        title: String,
         bodyMarkdown: String = "",
         sourceApp: String? = nil,
         language: String? = nil
     ) {
         self.id = id
-        self.title = title
+        self.title = String(bodyMarkdown.prefix(50))
         self.bodyMarkdown = bodyMarkdown
         self.createdAt = Date()
         self.updatedAt = Date()
@@ -37,9 +36,14 @@ public final class Note {
         self.language = language
     }
 
+    public func syncTitle() {
+        title = String(bodyMarkdown.prefix(50))
+    }
+
     public func updateWordCount() {
         let stripped = bodyMarkdown.trimmingCharacters(in: .whitespacesAndNewlines)
         wordCount = stripped.isEmpty ? 0 : stripped.split(separator: " ").count
         characterCount = bodyMarkdown.count
+        syncTitle()
     }
 }

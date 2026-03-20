@@ -254,10 +254,21 @@ final class DictationViewModel {
                 logger.info("finalizeDictation: injection result = \(String(describing: result))")
 
                 if case .skipped(reason: .noAccessibilityPermission) = result {
-                    state = .error("Grant Accessibility in System Settings to enable text injection")
-                    try? await Task.sleep(for: .seconds(4.0))
-                    resetState()
-                    return
+                    state = .error("Opening Accessibility settings — please grant access to Murmur")
+
+                    let granted = await injectionService.requestAccessibilityAndWait(timeout: 8.0)
+
+                    if granted {
+                        logger.info("finalizeDictation: AX permission granted, retrying injection")
+                        state = .processing
+                        let retryResult = await injectionService.inject(text: text)
+                        logger.info("finalizeDictation: retry injection result = \(String(describing: retryResult))")
+                    } else {
+                        state = .error("Text saved as note. Grant Accessibility access to enable injection into other apps.")
+                        try? await Task.sleep(for: .seconds(4.0))
+                        resetState()
+                        return
+                    }
                 }
             }
 
@@ -275,11 +286,9 @@ final class DictationViewModel {
             logger.error("saveAsNote: noteStore is nil!")
             return
         }
-        let title = String(text.prefix(50))
-        logger.info("saveAsNote: saving note titled \"\(title)\"")
+        logger.info("saveAsNote: saving note \"\(text.prefix(50))\"")
         do {
             let note = try noteStore.createNote(
-                title: title,
                 bodyMarkdown: text,
                 sourceApp: textInjectionService?.appContextDetector.currentAppContext?.bundleIdentifier,
                 language: language

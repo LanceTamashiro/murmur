@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.2] - 2026-03-20
+
+### Fixed
+- Fixed text injection failing silently when accessibility permission is stale (common with Xcode debug rebuilds). Now actively prompts via system dialog, opens System Settings, polls for up to 8 seconds, and retries injection automatically once granted.
+
+### Changed
+- Note titles are now auto-derived from body text (first 50 chars) instead of being set manually. Removes `title` parameter from `createNote` and `updateNote` APIs.
+- Test count: 60 → 64.
+
 ## [0.1.1] - 2026-03-20
 
 ### Fixed
