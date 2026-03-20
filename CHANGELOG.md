@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.8] - 2026-03-20
+
+### Added
+- **App icon** — custom waveform icon (indigo-to-violet gradient with white audio bars in macOS squircle shape) across all 10 required macOS sizes. Previously showed generic Xcode app icon.
+- `scripts/generate-icons.py` — reusable Pillow script to regenerate icons if design needs tweaking.
+
+### Fixed
+- **App icon not appearing in Dock/Finder** — asset catalog entries had invalid `"platform": "macOS"` key causing `actool` to silently skip compilation. Removed platform key and added `INFOPLIST_KEY_CFBundleIconName` to project.yml so Info.plist correctly references the icon.
+
 ## [0.1.7] - 2026-03-20
 
 ### Added
