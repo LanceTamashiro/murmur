@@ -19,10 +19,11 @@ struct EditorToolbar: View {
             Spacer()
             Button(action: copyToClipboard) {
                 Label(showCopied ? "Copied!" : "Copy", systemImage: showCopied ? "checkmark" : "doc.on.doc")
-                    .font(.caption)
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
             .disabled(note.bodyMarkdown.isEmpty)
+            .keyboardShortcut("c", modifiers: [.command, .shift])
         }
         .padding(.horizontal)
         .padding(.vertical, 6)

@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.1.4] - 2026-03-20
+
+### Changed
+- **Copy button is now prominent** — upgraded from tiny caption-sized borderless text to a filled, accent-colored button in the editor toolbar. Added ⌘⇧C keyboard shortcut.
+
 ## [0.1.3] - 2026-03-20
 
 ### Fixed
