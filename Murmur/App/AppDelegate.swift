@@ -73,10 +73,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menuBarController = menuBar
 
         // Set up hotkeys: Fn (push-to-talk) + Cmd+Shift+Space (toggle)
+        let triggerKeyRaw = UserDefaults.standard.string(forKey: "triggerKey") ?? "fn"
+        let triggerKey = TriggerKey(rawValue: triggerKeyRaw) ?? .fn
+
         let hotkey = GlobalHotkeyMonitor()
         hotkey.start(
+            triggerKey: triggerKey,
             onFnDown: { [weak self] in self?.handleFnDown() },
             onFnUp: { [weak self] in self?.handleFnUp() },
+            onFnCancel: { [weak self] in self?.handleFnCancel() },
             onToggle: { [weak self] in self?.handleToggle() }
         )
         hotkeyMonitor = hotkey
@@ -120,6 +125,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         dictationViewModel.startDictation()
         menuBarController?.iconState = .listening
+    }
+
+    private func handleFnCancel() {
+        guard let dictationViewModel else { return }
+        logger.info("handleFnCancel: hold too short (<300ms) — cancelling")
+        dictationViewModel.cancel()
+        menuBarController?.iconState = .idle
     }
 
     private func handleFnUp() {

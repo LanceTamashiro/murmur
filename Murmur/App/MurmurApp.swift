@@ -50,5 +50,6 @@ struct MurmurApp: App {
         Settings {
             SettingsView()
         }
+        .modelContainer(modelContainer)
     }
 }

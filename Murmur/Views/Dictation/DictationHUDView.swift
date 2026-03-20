@@ -44,6 +44,14 @@ struct FlowBarRecordingView: View {
                 FlowBarWaveform(amplitudes: viewModel.amplitudes)
                     .frame(width: 80, height: 24)
 
+                // Session timer
+                if let startTime = viewModel.sessionStartTime {
+                    Text(startTime, style: .timer)
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.white.opacity(0.6))
+                        .frame(minWidth: 30)
+                }
+
                 // Destination label
                 Text(viewModel.destinationLabel)
                     .font(.caption)
@@ -141,7 +149,13 @@ struct FlowBarErrorView: View {
 
 struct FlowBarIdleView: View {
     @State private var isHovering = false
+    @AppStorage("triggerKey") private var triggerKey = "fn"
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var triggerHint: String {
+        let key = TriggerKey(rawValue: triggerKey) ?? .fn
+        return "Hold \(key.displayName)"
+    }
 
     var body: some View {
         HStack(spacing: 6) {
@@ -150,7 +164,7 @@ struct FlowBarIdleView: View {
                 .foregroundStyle(.white.opacity(0.8))
 
             if isHovering {
-                Text("Hold Fn")
+                Text(triggerHint)
                     .font(.caption2)
                     .foregroundStyle(.white.opacity(0.5))
                     .transition(.opacity)

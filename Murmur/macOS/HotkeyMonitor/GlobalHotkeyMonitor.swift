@@ -3,16 +3,57 @@ import os.log
 
 private let logger = Logger(subsystem: "com.unconventionalpsychotherapy.murmur", category: "HotkeyMonitor")
 
+/// Configurable push-to-talk trigger key for hold-to-dictate mode.
+enum TriggerKey: String, CaseIterable, Sendable {
+    case fn = "fn"
+    case rightOption = "rightOption"
+    case rightCommand = "rightCommand"
+    case capsLock = "capsLock"
+
+    var displayName: String {
+        switch self {
+        case .fn: "Fn (Globe)"
+        case .rightOption: "Right Option"
+        case .rightCommand: "Right Command"
+        case .capsLock: "Caps Lock"
+        }
+    }
+
+    var keyCode: UInt16 {
+        switch self {
+        case .fn: 63
+        case .rightOption: 61
+        case .rightCommand: 54
+        case .capsLock: 57
+        }
+    }
+
+    var modifierFlag: NSEvent.ModifierFlags {
+        switch self {
+        case .fn: .function
+        case .rightOption: .option
+        case .rightCommand: .command
+        case .capsLock: .capsLock
+        }
+    }
+}
+
 @MainActor
 final class GlobalHotkeyMonitor {
     private var globalFlagsMonitor: Any?
     private var localFlagsMonitor: Any?
     private var globalKeyMonitor: Any?
     private var localKeyMonitor: Any?
-    private var fnKeyIsDown = false
+    private var triggerKeyIsDown = false
+    private var triggerPressTime: Date?
+    private var triggerKey: TriggerKey = .fn
     private var onFnDown: (() -> Void)?
     private var onFnUp: (() -> Void)?
+    private var onFnCancel: (() -> Void)?
     private var onToggle: (() -> Void)?
+
+    /// Minimum hold duration (seconds) to prevent accidental triggers.
+    private static let minimumHoldDuration: TimeInterval = 0.3
 
     /// Whether accessibility permission is granted (required for global event monitoring)
     var hasAccessibilityPermission: Bool {
@@ -21,25 +62,31 @@ final class GlobalHotkeyMonitor {
 
     /// Start monitoring for push-to-talk and toggle hotkey.
     /// - Parameters:
-    ///   - onFnDown: Called when Fn key is pressed down (start dictation)
-    ///   - onFnUp: Called when Fn key is released (stop dictation)
+    ///   - triggerKey: The key used for push-to-talk (default: Fn/Globe)
+    ///   - onFnDown: Called when trigger key is pressed down (start dictation)
+    ///   - onFnUp: Called when trigger key is released after ≥300ms (stop dictation)
+    ///   - onFnCancel: Called when trigger key is released before 300ms (cancel dictation)
     ///   - onToggle: Called when Cmd+Shift+Space is pressed (toggle dictation)
     func start(
+        triggerKey: TriggerKey = .fn,
         onFnDown: @escaping () -> Void,
         onFnUp: @escaping () -> Void,
+        onFnCancel: @escaping () -> Void = {},
         onToggle: @escaping () -> Void
     ) {
+        self.triggerKey = triggerKey
         self.onFnDown = onFnDown
         self.onFnUp = onFnUp
+        self.onFnCancel = onFnCancel
         self.onToggle = onToggle
 
         if !AXIsProcessTrusted() {
-            logger.warning("Accessibility permission not granted — global hotkey monitoring (Globe key) will not work. Only local events within the app will be captured.")
+            logger.warning("Accessibility permission not granted — global hotkey monitoring (\(triggerKey.displayName)) will not work. Only local events within the app will be captured.")
         } else {
             logger.info("Accessibility permission granted — global hotkey monitoring active")
         }
 
-        // Fn key monitoring (flagsChanged) — works if Globe key set to "Do Nothing"
+        // Trigger key monitoring (flagsChanged) — modifier keys fire flagsChanged, not keyDown
         // NOTE: addGlobalMonitorForEvents requires accessibility permission to work.
         // Without it, the closure is never called for events outside the app.
         globalFlagsMonitor = NSEvent.addGlobalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
@@ -67,7 +114,7 @@ final class GlobalHotkeyMonitor {
             return event
         }
 
-        logger.info("Hotkey monitoring started (Globe key + Cmd+Shift+Space)")
+        logger.info("Hotkey monitoring started (\(triggerKey.displayName) + Cmd+Shift+Space)")
     }
 
     /// Convenience: start with toggle-only (no push-to-talk).
@@ -85,28 +132,35 @@ final class GlobalHotkeyMonitor {
         localKeyMonitor = nil
         onFnDown = nil
         onFnUp = nil
+        onFnCancel = nil
         onToggle = nil
     }
 
-    // MARK: - Fn Key (Push-to-Talk)
+    // MARK: - Trigger Key (Push-to-Talk)
 
     private func handleFlagsChanged(_ event: NSEvent) {
-        // Log all flagsChanged events for debugging (keyCode helps identify which key)
         logger.debug("flagsChanged: keyCode=\(event.keyCode), modifiers=\(event.modifierFlags.rawValue)")
 
-        // keyCode 63 is specifically the Fn/Globe key
-        guard event.keyCode == 63 else { return }
+        guard event.keyCode == triggerKey.keyCode else { return }
 
-        let fnPressed = event.modifierFlags.contains(.function)
+        let keyPressed = event.modifierFlags.contains(triggerKey.modifierFlag)
 
-        if fnPressed && !fnKeyIsDown {
-            fnKeyIsDown = true
-            logger.info("Globe key DOWN — starting dictation")
+        if keyPressed && !triggerKeyIsDown {
+            triggerKeyIsDown = true
+            triggerPressTime = Date()
+            logger.info("\(self.triggerKey.displayName) DOWN — starting dictation")
             onFnDown?()
-        } else if !fnPressed && fnKeyIsDown {
-            fnKeyIsDown = false
-            logger.info("Globe key UP — stopping dictation")
-            onFnUp?()
+        } else if !keyPressed && triggerKeyIsDown {
+            triggerKeyIsDown = false
+            let holdDuration = triggerPressTime.map { Date().timeIntervalSince($0) } ?? 0
+            triggerPressTime = nil
+            if holdDuration >= Self.minimumHoldDuration {
+                logger.info("\(self.triggerKey.displayName) UP — stopping dictation (held \(String(format: "%.0f", holdDuration * 1000))ms)")
+                onFnUp?()
+            } else {
+                logger.info("\(self.triggerKey.displayName) UP — cancelling (held \(String(format: "%.0f", holdDuration * 1000))ms < 300ms minimum)")
+                onFnCancel?()
+            }
         }
     }
 

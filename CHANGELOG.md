@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.1.6] - 2026-03-20
+
+### Added
+- **Personal Dictionary UI** — full management interface in Settings: list, add/edit sheets, search, swipe-to-delete, suppress/enable toggle, context menus. No longer a placeholder.
+- **Session timer in HUD** — recording pill now shows elapsed time (MM:SS) during dictation.
+- **Configurable trigger keys** — choose between Fn (Globe), Right Option, Right Command, or Caps Lock for push-to-talk in Settings > Dictation.
+- **Toggle mode max duration** — auto-stops recording after configurable timeout (1/2/5/10 min or no limit, default 5 min). Prevents runaway sessions.
+- **300ms hold duration guard** — accidental Fn taps shorter than 300ms are cancelled instead of injecting empty text.
+- 9 new tests: TriggerKey enum validation (5), toggle/cancel state management (4).
+
+### Changed
+- `GlobalHotkeyMonitor` refactored from hardcoded Fn key to configurable `TriggerKey` enum.
+- `sessionStartTime` exposed for HUD timer display.
+- Settings scene now has `.modelContainer` for SwiftData queries in dictionary tab.
+- Test count: 83 → 92.
+
 ## [0.1.5] - 2026-03-20
 
 ### Fixed

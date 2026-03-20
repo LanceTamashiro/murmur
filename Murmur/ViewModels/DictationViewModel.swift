@@ -30,10 +30,11 @@ final class DictationViewModel {
     private var noteStore: NoteStoreService?
     private var personalDictionary: PersonalDictionaryService?
     private var currentSessionID: UUID?
-    private var sessionStartTime: Date?
+    private(set) var sessionStartTime: Date?
     private var startupTask: Task<Void, Never>?
     private var eventTask: Task<Void, Never>?
     private var amplitudeTask: Task<Void, Never>?
+    private var maxDurationTask: Task<Void, Never>?
 
     /// Tracks early injection: when the user releases the globe key, we inject
     /// the already-accumulated text immediately (without waiting for analyzer
@@ -58,6 +59,7 @@ final class DictationViewModel {
         switch state {
         case .idle, .error:
             startDictation()
+            startMaxDurationTimer()
         case .recording:
             stopDictation()
         default:
@@ -383,6 +385,19 @@ final class DictationViewModel {
         // Deferred to full integration pass
     }
 
+    private func startMaxDurationTimer() {
+        maxDurationTask?.cancel()
+        let maxSeconds = UserDefaults.standard.object(forKey: "toggleMaxDuration") as? Int ?? 300
+        guard maxSeconds > 0 else { return } // 0 = no limit
+        logger.info("startMaxDurationTimer: will auto-stop after \(maxSeconds)s")
+        maxDurationTask = Task {
+            try? await Task.sleep(for: .seconds(maxSeconds))
+            guard !Task.isCancelled, state == .recording else { return }
+            logger.info("startMaxDurationTimer: max duration reached — auto-stopping")
+            stopDictation()
+        }
+    }
+
     private func pushAmplitude(_ value: Float) {
         amplitudes.removeFirst()
         amplitudes.append(min(value * 3, 1.0)) // Scale for visual impact
@@ -404,8 +419,10 @@ final class DictationViewModel {
         startupTask = nil
         eventTask?.cancel()
         amplitudeTask?.cancel()
+        maxDurationTask?.cancel()
         eventTask = nil
         amplitudeTask = nil
+        maxDurationTask = nil
         currentSessionID = nil
         sessionStartTime = nil
         finalizedSegments = []

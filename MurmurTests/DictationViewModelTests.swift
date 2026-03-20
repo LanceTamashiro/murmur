@@ -428,6 +428,130 @@ struct AppDelegateSetupTests {
     }
 }
 
+// MARK: - TriggerKey Tests
+
+@Suite("TriggerKey Tests")
+struct TriggerKeyTests {
+
+    @Test func allCasesHaveUniqueKeyCodes() {
+        let keyCodes = TriggerKey.allCases.map(\.keyCode)
+        #expect(Set(keyCodes).count == TriggerKey.allCases.count, "Each trigger key must have a unique keyCode")
+    }
+
+    @Test func rawValuesRoundTrip() {
+        for key in TriggerKey.allCases {
+            let roundTripped = TriggerKey(rawValue: key.rawValue)
+            #expect(roundTripped == key)
+        }
+    }
+
+    @Test func fnKeyHasCorrectKeyCode() {
+        #expect(TriggerKey.fn.keyCode == 63)
+    }
+
+    @Test func displayNamesAreNonEmpty() {
+        for key in TriggerKey.allCases {
+            #expect(!key.displayName.isEmpty)
+        }
+    }
+
+    @Test func invalidRawValueReturnsNil() {
+        #expect(TriggerKey(rawValue: "nonexistent") == nil)
+    }
+}
+
+// MARK: - Toggle Max Duration Tests
+
+@MainActor
+@Suite("Toggle Max Duration Tests", .serialized)
+struct ToggleMaxDurationTests {
+
+    private static func makeViewModel(engine: MockSpeechEngine) throws -> (DictationViewModel, MockSpeechEngine) {
+        let schema = Schema(SchemaV1.models)
+        let config = ModelConfiguration(isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [config])
+        let noteStore = NoteStoreService(modelContainer: container)
+
+        let appContextDetector = AppContextDetector()
+        let injectionService = TextInjectionService(appContextDetector: appContextDetector)
+
+        let vm = DictationViewModel()
+        vm.configure(
+            speechEngine: engine,
+            textInjectionService: injectionService,
+            noteStore: noteStore
+        )
+        return (vm, engine)
+    }
+
+    @Test func cancelResetsStateToIdle() async throws {
+        let engine = MockSpeechEngine()
+        engine.mockAuthorizationResult = .authorized
+
+        let (vm, _) = try ToggleMaxDurationTests.makeViewModel(engine: engine)
+
+        vm.startDictation()
+        #expect(vm.state == .recording)
+
+        // Cancel (simulates short hold < 300ms)
+        vm.cancel()
+        try await Task.sleep(for: .milliseconds(200))
+
+        #expect(vm.state == .idle)
+    }
+
+    @Test func sessionStartTimeIsSetOnStart() async throws {
+        let engine = MockSpeechEngine()
+        engine.mockAuthorizationResult = .authorized
+
+        let (vm, _) = try ToggleMaxDurationTests.makeViewModel(engine: engine)
+
+        #expect(vm.sessionStartTime == nil)
+
+        vm.startDictation()
+        #expect(vm.sessionStartTime != nil)
+
+        vm.cancel()
+        try await Task.sleep(for: .milliseconds(200))
+
+        #expect(vm.sessionStartTime == nil)
+    }
+
+    @Test func toggleFromIdleStartsRecording() async throws {
+        let engine = MockSpeechEngine()
+        engine.mockAuthorizationResult = .authorized
+
+        let (vm, _) = try ToggleMaxDurationTests.makeViewModel(engine: engine)
+
+        vm.toggle()
+        #expect(vm.state == .recording)
+
+        vm.cancel()
+        try await Task.sleep(for: .milliseconds(200))
+    }
+
+    @Test func toggleFromRecordingStops() async throws {
+        let engine = MockSpeechEngine()
+        engine.mockAuthorizationResult = .authorized
+
+        let (vm, _) = try ToggleMaxDurationTests.makeViewModel(engine: engine)
+
+        vm.toggle()
+        #expect(vm.state == .recording)
+
+        // Wait for session to start
+        try await Task.sleep(for: .milliseconds(200))
+
+        vm.toggle()
+        // Should transition to processing or idle
+        let state = vm.state
+        #expect(state == .processing || state == .idle)
+
+        vm.cancel()
+        try await Task.sleep(for: .milliseconds(200))
+    }
+}
+
 // MARK: - MockSpeechEngine Race Condition Tests (MurmurCore level)
 
 @Suite("MockSpeechEngine Race Condition Tests")

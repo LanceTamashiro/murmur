@@ -7,13 +7,21 @@ Murmur is a macOS 26+ voice dictation and intelligent notes app for Unconvention
 ## Build & Test
 
 ```bash
-# Build the app
+# Run ALL tests (recommended — works around macOS 26 beta test-host crash)
 cd /Users/lance/Documents/Murmur
+./scripts/run-tests.sh
+
+# Build the app only
 xcodebuild build -scheme Murmur -destination 'platform=macOS'
 
-# Run MurmurCore unit tests
+# Run MurmurCore SPM tests only
 cd /Users/lance/Documents/Murmur/Packages/MurmurCore
 swift test
+
+# Run a single MurmurTests suite (must run individually, not all at once)
+cd /Users/lance/Documents/Murmur
+xcodebuild test -scheme Murmur -destination 'platform=macOS' \
+  -only-testing:MurmurTests/DictationViewModelRaceTests
 
 # Regenerate Xcode project after adding/removing files
 xcodegen generate
@@ -37,6 +45,9 @@ xcodegen generate
 - **Sentence-boundary isFinal:** `DictationTranscriber` produces `isFinal=true` at sentence boundaries, not just session end. The ViewModel accumulates these into `finalizedSegments[]`.
 - **Early injection on key release:** When the globe key is released, `stopDictation()` captures the already-accumulated text (`finalizedSegments` + partial from `liveTranscript`) and injects it immediately — without waiting for `speechEngine.stopSession()` to finalize. Analyzer finalization runs in the background; if it produces additional tail text, the saved note is updated via `noteStore.updateNote()`. The `earlyInjectionNoteID`/`earlyInjectionText` properties track this.
 - **HUD sizing must not use NSHostingView constraints:** `AutoResizingHostingView` sets `sizingOptions = []` to prevent `NSHostingView` from driving window constraints. Without this, the hosting view's internal view graph evaluation during `updateConstraints()` triggers `setNeedsUpdateConstraints`, creating a recursive constraint loop that crashes. Window sizing is managed manually in `layout()` with a deferred `DispatchQueue.main.async` and a `resizeScheduled` re-entrancy guard.
+- **Configurable trigger keys via `TriggerKey` enum:** `GlobalHotkeyMonitor` accepts a `TriggerKey` parameter (`.fn`, `.rightOption`, `.rightCommand`, `.capsLock`). Each case maps to a `keyCode` and `modifierFlag`. The setting is stored in `@AppStorage("triggerKey")` and read in `AppDelegate.setup()`. Changing the trigger key requires an app restart.
+- **300ms minimum hold duration:** `GlobalHotkeyMonitor` tracks press time and fires `onFnCancel` instead of `onFnUp` for holds shorter than 300ms, preventing accidental triggers. The cancel callback is wired to `DictationViewModel.cancel()`.
+- **Toggle mode max duration:** When dictation starts via `toggle()`, a `maxDurationTask` auto-stops recording after `toggleMaxDuration` seconds (default 300s / 5 min, stored in `@AppStorage("toggleMaxDuration")`). Set to 0 for no limit. The task is cancelled on manual stop/cancel.
 - **Globe key requires accessibility + "Do Nothing" setting:** `NSEvent.addGlobalMonitorForEvents(matching: .flagsChanged)` silently fails without accessibility permission. Globe key (keyCode 63) only fires if `AppleFnUsageType = 0`.
 - **Always save as note:** Every dictation is saved as a Note regardless of whether text injection succeeds. History is always preserved.
 - **System callback threading:** `SFSpeechRecognizer.requestAuthorization` fires on a background queue. `withCheckedContinuation` does NOT hop back to `@MainActor` — use `await MainActor.run { }` or extract logic into `@MainActor` classes. Never rely on `@MainActor` annotations on struct methods for continuation safety.
@@ -69,10 +80,10 @@ xcodegen generate
 
 ## Testing
 
-- 83 tests across 10 suites: NoteStoreService, PersonalDictionaryService, MockSpeechEngine, OnboardingPermissionCoordinator, ThreadingSafety (MurmurCore: 64), plus DictationViewModelRace, EarlyInjection, TextInjection, MockSpeechEngineRace, AppDelegateSetup (MurmurTests: 19)
+- 92 tests across 12 suites: NoteStoreService, PersonalDictionaryService, MockSpeechEngine, OnboardingPermissionCoordinator, ThreadingSafety (MurmurCore: 64), plus DictationViewModelRace, EarlyInjection, TextInjection, MockSpeechEngineRace, AppDelegateSetup, TriggerKey, ToggleMaxDuration (MurmurTests: 28)
 - All tests use in-memory `ModelContainer`, `MockSpeechEngine`, or `BackgroundCallbackPermissionProvider`
-- Tests cover: CRUD, search, trash/restore, auth flows, mic permission, session lifecycle, event streaming, error types, threading safety, onboarding permission flow, race conditions, early injection (snapshot text, tail text update, empty snapshot fallback, no double injection), text injection into TextEdit
+- Tests cover: CRUD, search, trash/restore, auth flows, mic permission, session lifecycle, event streaming, error types, threading safety, onboarding permission flow, race conditions, early injection (snapshot text, tail text update, empty snapshot fallback, no double injection), text injection into TextEdit, TriggerKey enum validation, toggle/cancel state management
 - TextInjection tests launch TextEdit, inject text via AX API, and verify it arrived — require accessibility permission (skip if not granted)
 - Swift 6 strict concurrency: async stream tests use `actor`-based collectors for Sendable safety
 - Threading regression tests: `BackgroundCallbackPermissionProvider` fires callbacks on `DispatchQueue.global()` to reproduce the exact crash scenario from `SFSpeechRecognizer`
-- Known: `BSBlockSentinel:FBSWorkspaceScenesClient` crash in macOS 26 beta causes test-host restart when running all suites together. All tests pass individually — run suites separately with `-only-testing:` if needed.
+- **Do NOT run `xcodebuild test -scheme Murmur` without `-only-testing:`** — macOS 26 beta crashes the test host (`BSBlockSentinel:FBSWorkspaceScenesClient`). Always use `./scripts/run-tests.sh` which rebuilds and runs each suite separately, checking actual Swift Testing output rather than xcodebuild exit codes.
