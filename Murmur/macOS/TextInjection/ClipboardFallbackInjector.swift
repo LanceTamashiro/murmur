@@ -26,8 +26,9 @@ final class ClipboardFallbackInjector {
             return .failed(error: .clipboardOperationFailed)
         }
 
-        // Wait 800ms then restore original clipboard (slow apps like Electron need time to consume paste)
-        try? await Task.sleep(for: .milliseconds(800))
+        // Wait for target app to consume the paste before restoring clipboard.
+        // 200ms is sufficient for most apps (native apps are instant, Electron <100ms).
+        try? await Task.sleep(for: .milliseconds(200))
         restorePasteboardContents(pasteboard, items: savedItems)
 
         return .success(strategy: .clipboardPaste)

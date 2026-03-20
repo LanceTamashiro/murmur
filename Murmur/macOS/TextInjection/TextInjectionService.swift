@@ -44,7 +44,15 @@ final class TextInjectionService {
         if let targetApp = NSRunningApplication(processIdentifier: targetContext.processID) {
             logger.info("inject: re-activating \(targetContext.displayName) before injection")
             targetApp.activate()
-            try? await Task.sleep(for: .milliseconds(300))
+            // Poll until target is frontmost (up to 150ms, checking every 25ms).
+            // Most apps activate in 25-50ms; the old fixed 300ms sleep was conservative.
+            let activateStart = ContinuousClock.now
+            while ContinuousClock.now - activateStart < .milliseconds(150) {
+                if NSWorkspace.shared.frontmostApplication?.processIdentifier == targetContext.processID {
+                    break
+                }
+                try? await Task.sleep(for: .milliseconds(25))
+            }
         }
 
         // Try AX direct injection, targeting the specific app by PID.

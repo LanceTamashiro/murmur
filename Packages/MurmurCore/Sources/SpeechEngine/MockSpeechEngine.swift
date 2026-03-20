@@ -20,6 +20,8 @@ public final class MockSpeechEngine: SpeechEngineProtocol, @unchecked Sendable {
     public var authorizationDelay: TimeInterval = 0
     /// Delay in seconds before startSession() returns (simulates slow engine startup)
     public var startSessionDelay: TimeInterval = 0
+    /// Delay before stopSession() emits events (simulates slow analyzer finalization)
+    public var stopSessionDelay: Duration = .zero
     public var startSessionCallCount: Int = 0
     public var stopSessionCallCount: Int = 0
     public var cancelSessionCallCount: Int = 0
@@ -68,6 +70,11 @@ public final class MockSpeechEngine: SpeechEngineProtocol, @unchecked Sendable {
     public func stopSession() async {
         stopSessionCallCount += 1
         guard let sessionID = currentSessionID else { return }
+
+        if stopSessionDelay > .zero {
+            try? await Task.sleep(for: stopSessionDelay)
+        }
+
         let result = TranscriptionResult(
             text: mockTranscriptionText,
             isFinal: true,
@@ -91,6 +98,12 @@ public final class MockSpeechEngine: SpeechEngineProtocol, @unchecked Sendable {
         guard let sessionID = currentSessionID else { return }
         let result = TranscriptionResult(text: text, isFinal: false, sessionID: sessionID)
         eventContinuation?.yield(.partial(result))
+    }
+
+    public func simulateFinalResult(_ text: String, language: String = "en-US") {
+        guard let sessionID = currentSessionID else { return }
+        let result = TranscriptionResult(text: text, isFinal: true, language: language, sessionID: sessionID)
+        eventContinuation?.yield(.final(result))
     }
 
     public func simulateAmplitude(_ value: Float) {

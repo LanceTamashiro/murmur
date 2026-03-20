@@ -235,6 +235,170 @@ struct DictationViewModelRaceTests {
     }
 }
 
+// MARK: - Early Injection Tests
+
+@MainActor
+@Suite("Early Injection Tests", .serialized)
+struct EarlyInjectionTests {
+
+    private static func makeViewModel(engine: MockSpeechEngine) throws -> (DictationViewModel, MockSpeechEngine, NoteStoreService) {
+        let schema = Schema(SchemaV1.models)
+        let config = ModelConfiguration(isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [config])
+        let noteStore = NoteStoreService(modelContainer: container)
+
+        let appContextDetector = AppContextDetector()
+        let injectionService = TextInjectionService(appContextDetector: appContextDetector)
+
+        let vm = DictationViewModel()
+        vm.configure(
+            speechEngine: engine,
+            textInjectionService: injectionService,
+            noteStore: noteStore
+        )
+        return (vm, engine, noteStore)
+    }
+
+    @Test func earlyInjectionUsesAccumulatedText() async throws {
+        let engine = MockSpeechEngine()
+        engine.mockAuthorizationResult = .authorized
+        // Slow finalization so early injection has time to fire first
+        engine.stopSessionDelay = .seconds(1)
+        engine.mockTranscriptionText = "Hello world. This is a test."
+
+        let (vm, _, noteStore) = try EarlyInjectionTests.makeViewModel(engine: engine)
+
+        vm.startDictation()
+        try await Task.sleep(for: .milliseconds(200))
+
+        // Simulate sentence-boundary finals during recording
+        engine.simulateFinalResult("Hello world. ")
+        engine.simulatePartialResult("Hello world. This is")
+        try await Task.sleep(for: .milliseconds(50))
+
+        // At this point, finalizedSegments = ["Hello world. "] and
+        // liveTranscript = "Hello world. This is"
+
+        // Stop — should trigger early injection with "Hello world. This is"
+        vm.stopAndInject()
+        #expect(vm.state == .processing)
+
+        // Give early injection time to fire (but less than the 1s stopSessionDelay)
+        try await Task.sleep(for: .milliseconds(300))
+
+        // A note should have been saved with the snapshot text
+        let notes = try noteStore.notes(filter: NoteFilter(), sortOrder: .createdAtDescending)
+        #expect(notes.count >= 1)
+        if let firstNote = notes.first {
+            #expect(firstNote.bodyMarkdown == "Hello world. This is")
+        }
+
+        // Clean up
+        vm.cancel()
+        try await Task.sleep(for: .milliseconds(200))
+    }
+
+    @Test func tailTextUpdatesNote() async throws {
+        let engine = MockSpeechEngine()
+        engine.mockAuthorizationResult = .authorized
+        // Slow finalization to ensure early injection fires first
+        engine.stopSessionDelay = .milliseconds(500)
+        engine.mockTranscriptionText = "Hello world. This is a test."
+
+        let (vm, _, noteStore) = try EarlyInjectionTests.makeViewModel(engine: engine)
+
+        vm.startDictation()
+        try await Task.sleep(for: .milliseconds(200))
+
+        // Simulate a finalized sentence during recording
+        engine.simulateFinalResult("Hello world. ")
+        try await Task.sleep(for: .milliseconds(50))
+
+        // Stop — early injection fires with "Hello world. "
+        vm.stopAndInject()
+        try await Task.sleep(for: .milliseconds(100))
+
+        // Note should exist with early snapshot text
+        var notes = try noteStore.notes(filter: NoteFilter(), sortOrder: .createdAtDescending)
+        #expect(notes.count >= 1)
+        let earlyText = notes.first?.bodyMarkdown
+        #expect(earlyText == "Hello world. ")
+
+        // Wait for stopSession to complete (emits final + sessionEnded with full text)
+        try await Task.sleep(for: .seconds(1))
+
+        // The note should now be updated with the full text including tail
+        notes = try noteStore.notes(filter: NoteFilter(), sortOrder: .createdAtDescending)
+        #expect(notes.count >= 1)
+        if let updatedNote = notes.first {
+            #expect(updatedNote.bodyMarkdown == "Hello world. This is a test.")
+        }
+
+        vm.cancel()
+        try await Task.sleep(for: .milliseconds(200))
+    }
+
+    @Test func emptySnapshotSkipsEarlyInjection() async throws {
+        let engine = MockSpeechEngine()
+        engine.mockAuthorizationResult = .authorized
+        engine.mockTranscriptionText = "Late arriving text."
+
+        let (vm, _, noteStore) = try EarlyInjectionTests.makeViewModel(engine: engine)
+
+        vm.startDictation()
+        try await Task.sleep(for: .milliseconds(200))
+
+        // Don't emit any transcription events — snapshot will be empty
+
+        // Stop — should NOT trigger early injection
+        vm.stopAndInject()
+        #expect(vm.state == .processing)
+
+        // No note should exist yet (early injection skipped)
+        try await Task.sleep(for: .milliseconds(100))
+        var notes = try noteStore.notes(filter: NoteFilter(), sortOrder: .createdAtDescending)
+        #expect(notes.isEmpty)
+
+        // Wait for normal sessionEnded path
+        try await Task.sleep(for: .milliseconds(500))
+
+        // Now a note should exist via the normal path
+        notes = try noteStore.notes(filter: NoteFilter(), sortOrder: .createdAtDescending)
+        #expect(notes.count == 1)
+        #expect(notes.first?.bodyMarkdown == "Late arriving text.")
+
+        vm.cancel()
+        try await Task.sleep(for: .milliseconds(200))
+    }
+
+    @Test func earlyInjectionDoesNotDoubleInject() async throws {
+        let engine = MockSpeechEngine()
+        engine.mockAuthorizationResult = .authorized
+        engine.stopSessionDelay = .milliseconds(300)
+        engine.mockTranscriptionText = "Hello world."
+
+        let (vm, _, noteStore) = try EarlyInjectionTests.makeViewModel(engine: engine)
+
+        vm.startDictation()
+        try await Task.sleep(for: .milliseconds(200))
+
+        engine.simulateFinalResult("Hello world.")
+        try await Task.sleep(for: .milliseconds(50))
+
+        vm.stopAndInject()
+
+        // Wait for everything to complete (early injection + sessionEnded)
+        try await Task.sleep(for: .seconds(1))
+
+        // Only ONE note should exist — sessionEnded should NOT create a second note
+        let notes = try noteStore.notes(filter: NoteFilter(), sortOrder: .createdAtDescending)
+        #expect(notes.count == 1)
+
+        vm.cancel()
+        try await Task.sleep(for: .milliseconds(200))
+    }
+}
+
 // MARK: - AppDelegate Setup Guard Tests
 
 @MainActor

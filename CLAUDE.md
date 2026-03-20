@@ -34,7 +34,9 @@ xcodegen generate
 - **AsyncStream per session:** `DictationTranscriberEngine` creates fresh `AsyncStream`s for each session via `createFreshStreams()`. AsyncStream only supports a single iterator — reusing streams across sessions causes silent failures.
 - **Lazy AVAudioEngine:** `audioEngine` is `lazy var` to avoid CoreAudio `-10877` errors before mic permission is granted.
 - **Input stream finish:** Must call `inputContinuation?.finish()` before `analyzer.finalizeAndFinishThroughEndOfInput()` — otherwise the analyzer hangs waiting for more audio.
-- **Sentence-boundary isFinal:** `DictationTranscriber` produces `isFinal=true` at sentence boundaries, not just session end. The ViewModel accumulates these into `finalizedSegments[]` and only saves/injects on `sessionEnded`.
+- **Sentence-boundary isFinal:** `DictationTranscriber` produces `isFinal=true` at sentence boundaries, not just session end. The ViewModel accumulates these into `finalizedSegments[]`.
+- **Early injection on key release:** When the globe key is released, `stopDictation()` captures the already-accumulated text (`finalizedSegments` + partial from `liveTranscript`) and injects it immediately — without waiting for `speechEngine.stopSession()` to finalize. Analyzer finalization runs in the background; if it produces additional tail text, the saved note is updated via `noteStore.updateNote()`. The `earlyInjectionNoteID`/`earlyInjectionText` properties track this.
+- **HUD sizing must not use NSHostingView constraints:** `AutoResizingHostingView` sets `sizingOptions = []` to prevent `NSHostingView` from driving window constraints. Without this, the hosting view's internal view graph evaluation during `updateConstraints()` triggers `setNeedsUpdateConstraints`, creating a recursive constraint loop that crashes. Window sizing is managed manually in `layout()` with a deferred `DispatchQueue.main.async` and a `resizeScheduled` re-entrancy guard.
 - **Globe key requires accessibility + "Do Nothing" setting:** `NSEvent.addGlobalMonitorForEvents(matching: .flagsChanged)` silently fails without accessibility permission. Globe key (keyCode 63) only fires if `AppleFnUsageType = 0`.
 - **Always save as note:** Every dictation is saved as a Note regardless of whether text injection succeeds. History is always preserved.
 - **System callback threading:** `SFSpeechRecognizer.requestAuthorization` fires on a background queue. `withCheckedContinuation` does NOT hop back to `@MainActor` — use `await MainActor.run { }` or extract logic into `@MainActor` classes. Never rely on `@MainActor` annotations on struct methods for continuation safety.
@@ -67,9 +69,9 @@ xcodegen generate
 
 ## Testing
 
-- 79 tests across 9 suites: NoteStoreService, PersonalDictionaryService, MockSpeechEngine, OnboardingPermissionCoordinator, ThreadingSafety (MurmurCore: 64), plus DictationViewModelRace, TextInjection, MockSpeechEngineRace, AppDelegateSetup (MurmurTests: 15)
+- 83 tests across 10 suites: NoteStoreService, PersonalDictionaryService, MockSpeechEngine, OnboardingPermissionCoordinator, ThreadingSafety (MurmurCore: 64), plus DictationViewModelRace, EarlyInjection, TextInjection, MockSpeechEngineRace, AppDelegateSetup (MurmurTests: 19)
 - All tests use in-memory `ModelContainer`, `MockSpeechEngine`, or `BackgroundCallbackPermissionProvider`
-- Tests cover: CRUD, search, trash/restore, auth flows, mic permission, session lifecycle, event streaming, error types, threading safety, onboarding permission flow, race conditions, text injection into TextEdit
+- Tests cover: CRUD, search, trash/restore, auth flows, mic permission, session lifecycle, event streaming, error types, threading safety, onboarding permission flow, race conditions, early injection (snapshot text, tail text update, empty snapshot fallback, no double injection), text injection into TextEdit
 - TextInjection tests launch TextEdit, inject text via AX API, and verify it arrived — require accessibility permission (skip if not granted)
 - Swift 6 strict concurrency: async stream tests use `actor`-based collectors for Sendable safety
 - Threading regression tests: `BackgroundCallbackPermissionProvider` fires callbacks on `DispatchQueue.global()` to reproduce the exact crash scenario from `SFSpeechRecognizer`

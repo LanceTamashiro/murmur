@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.1.5] - 2026-03-20
+
+### Fixed
+- **Fixed HUD constraint recursion crash** — `NSHostingView.updateConstraints()` triggered recursive `setNeedsUpdateConstraints` via internal view graph invalidation. Set `sizingOptions = []` to prevent hosting view from driving window constraints, with manual sizing in `layout()` and re-entrancy guard.
+
+### Changed
+- **Text injection is now ~3-4x faster** — inject accumulated text immediately on globe key release instead of waiting for analyzer finalization. Finalization now runs in the background; any tail text updates the saved note. AX injection drops from ~650ms to ~175ms, clipboard fallback from ~1650ms to ~300ms.
+- App reactivation delay: replaced fixed 300ms sleep with polling loop (25ms intervals, 150ms max). Most apps activate in 25-50ms.
+- Clipboard paste restore delay: reduced from 800ms to 200ms. The Cmd+V event has already been posted; 200ms is sufficient.
+- Test count: 79 → 83 (4 new early injection tests).
+
 ## [0.1.4] - 2026-03-20
 
 ### Changed

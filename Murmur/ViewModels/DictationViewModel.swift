@@ -35,6 +35,13 @@ final class DictationViewModel {
     private var eventTask: Task<Void, Never>?
     private var amplitudeTask: Task<Void, Never>?
 
+    /// Tracks early injection: when the user releases the globe key, we inject
+    /// the already-accumulated text immediately (without waiting for analyzer
+    /// finalization). If finalization later produces additional tail text, we
+    /// update the saved note.
+    private var earlyInjectionNoteID: UUID?
+    private var earlyInjectionText: String?
+
     func configure(
         speechEngine: any SpeechEngineProtocol,
         textInjectionService: TextInjectionService,
@@ -207,10 +214,30 @@ final class DictationViewModel {
         state = .processing
 
         if currentSessionID != nil {
-            // Session is running — stop it normally
+            // Capture the text that's already visible in the pill — don't wait
+            // for analyzer finalization, which only catches tail audio after the
+            // last sentence boundary.
+            let accumulated = finalizedSegments.joined()
+            let partial: String
+            if !accumulated.isEmpty, liveTranscript.hasPrefix(accumulated) {
+                partial = String(liveTranscript.dropFirst(accumulated.count))
+            } else if finalizedSegments.isEmpty {
+                partial = liveTranscript
+            } else {
+                partial = ""
+            }
+            let snapshotText = accumulated + partial
+
+            if !snapshotText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                // Begin injection immediately with the snapshot text
+                logger.info("stopDictation: early injection with \(snapshotText.count) chars")
+                finalizeDictation(text: snapshotText, language: lastLanguage, isEarlySnapshot: true)
+            }
+
+            // Stop session in background — sessionEnded will update the note
+            // with any tail text from finalization
             Task {
                 await speechEngine.stopSession()
-                // The sessionEnded event will trigger text injection/save
             }
         } else {
             // Session hasn't started yet — the startup Task is still in its async
@@ -262,28 +289,47 @@ final class DictationViewModel {
             logger.info("Session ended (duration=\(duration)s, segments=\(self.finalizedSegments.count), text=\"\(fullText.prefix(100))\")")
             saveDictationSession(duration: duration)
 
-            // Now finalize with the complete accumulated text
-            if !fullText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                finalizeDictation(text: fullText, language: lastLanguage)
+            if let earlyNoteID = earlyInjectionNoteID {
+                // Early injection already happened — update the note if
+                // analyzer finalization produced additional tail text.
+                if fullText != earlyInjectionText,
+                   !fullText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    let earlyCount = self.earlyInjectionText?.count ?? 0
+                    logger.info("sessionEnded: updating note with tail text (\(fullText.count) vs \(earlyCount) chars)")
+                    try? noteStore?.updateNote(earlyNoteID, bodyMarkdown: fullText)
+                }
+                earlyInjectionNoteID = nil
+                earlyInjectionText = nil
             } else {
-                logger.warning("Session ended with no text — nothing to save")
-                resetState()
+                // No early injection (text was empty at stop time) — inject normally
+                if !fullText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    finalizeDictation(text: fullText, language: lastLanguage)
+                } else {
+                    logger.warning("Session ended with no text — nothing to save")
+                    resetState()
+                }
             }
         }
     }
 
-    private func finalizeDictation(text: String, language: String) {
+    private func finalizeDictation(text: String, language: String, isEarlySnapshot: Bool = false) {
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             logger.info("finalizeDictation: empty text, resetting")
             resetState()
             return
         }
 
-        logger.info("finalizeDictation: \"\(text.prefix(100))\" (language=\(language))")
+        logger.info("finalizeDictation: \"\(text.prefix(100))\" (language=\(language), early=\(isEarlySnapshot))")
 
         Task {
             // ALWAYS save as a note — every dictation is recorded in history
-            saveAsNote(text: text, language: language)
+            let noteID = saveAsNote(text: text, language: language)
+
+            if isEarlySnapshot {
+                // Track this so sessionEnded can update the note with tail text
+                earlyInjectionNoteID = noteID
+                earlyInjectionText = text
+            }
 
             // Also try to inject into frontmost app's text field
             if let injectionService = textInjectionService {
@@ -311,10 +357,11 @@ final class DictationViewModel {
         }
     }
 
-    private func saveAsNote(text: String, language: String) {
+    @discardableResult
+    private func saveAsNote(text: String, language: String) -> UUID? {
         guard let noteStore else {
             logger.error("saveAsNote: noteStore is nil!")
-            return
+            return nil
         }
         logger.info("saveAsNote: saving note \"\(text.prefix(50))\"")
         do {
@@ -324,8 +371,10 @@ final class DictationViewModel {
                 language: language
             )
             logger.info("saveAsNote: note saved successfully (id=\(note.id))")
+            return note.id
         } catch {
             logger.error("saveAsNote: FAILED — \(error)")
+            return nil
         }
     }
 
@@ -360,6 +409,8 @@ final class DictationViewModel {
         currentSessionID = nil
         sessionStartTime = nil
         finalizedSegments = []
+        earlyInjectionNoteID = nil
+        earlyInjectionText = nil
         postAccessibilityAnnouncement("Dictation ended")
     }
 
