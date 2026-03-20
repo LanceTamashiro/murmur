@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.7] - 2026-03-20
+
+### Added
+- **Test runner script** (`scripts/run-tests.sh`) — runs all tests reliably by executing each MurmurTests suite individually, working around the macOS 26 beta BSBlockSentinel test-host crash. Rebuilds before each suite and checks actual Swift Testing output rather than xcodebuild exit codes.
+
+### Changed
+- CLAUDE.md updated to use `./scripts/run-tests.sh` as the primary test command, preventing agents from hitting the BSBlockSentinel crash.
+
 ## [0.1.6] - 2026-03-20
 
 ### Added
