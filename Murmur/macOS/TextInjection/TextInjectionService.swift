@@ -1,5 +1,8 @@
 import AppKit
+import os.log
 import TextInjection
+
+private let logger = Logger(subsystem: "com.unconventionalpsychotherapy.murmur", category: "TextInjection")
 
 @MainActor
 final class TextInjectionService {
@@ -16,14 +19,17 @@ final class TextInjectionService {
     }
 
     func inject(text: String) async -> InjectionResult {
-        // Check if there's a frontmost app to inject into
-        guard appContextDetector.currentAppContext != nil else {
+        // Capture target app context upfront (may change during async work)
+        guard let targetContext = appContextDetector.currentAppContext else {
+            logger.warning("inject: no frontmost app context — skipping")
             return .skipped(reason: .noFocusedTextField)
         }
+        logger.info("inject: target app = \(targetContext.displayName) (pid=\(targetContext.processID)), AX=\(self.hasAccessibilityPermission)")
 
         // Try accessibility injection first
         if hasAccessibilityPermission {
             let result = axInjector.inject(text: text)
+            logger.info("inject: AX result = \(String(describing: result))")
             switch result {
             case .success:
                 return result
@@ -33,8 +39,17 @@ final class TextInjectionService {
             }
         }
 
+        // Re-activate target app before clipboard paste (focus may have drifted)
+        if let targetApp = NSRunningApplication(processIdentifier: targetContext.processID) {
+            logger.info("inject: re-activating \(targetContext.displayName) before paste")
+            targetApp.activate()
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+
         // Clipboard fallback
-        return await clipboardInjector.inject(text: text)
+        let clipResult = await clipboardInjector.inject(text: text)
+        logger.info("inject: clipboard result = \(String(describing: clipResult))")
+        return clipResult
     }
 
     func openAccessibilityPreferences() {

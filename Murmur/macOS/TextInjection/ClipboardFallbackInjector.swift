@@ -14,6 +14,9 @@ final class ClipboardFallbackInjector {
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
 
+        // Brief delay to ensure clipboard contents are available to target app
+        try? await Task.sleep(for: .milliseconds(50))
+
         // Synthesize Cmd+V
         let success = simulatePaste()
 
@@ -31,7 +34,7 @@ final class ClipboardFallbackInjector {
     }
 
     private func simulatePaste() -> Bool {
-        let source = CGEventSource(stateID: .combinedSessionState)
+        let source = CGEventSource(stateID: .privateState)
 
         guard let keyDown = CGEvent(keyboardEventSource: source, virtualKey: 0x09, keyDown: true),
               let keyUp = CGEvent(keyboardEventSource: source, virtualKey: 0x09, keyDown: false) else {

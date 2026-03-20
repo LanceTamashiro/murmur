@@ -39,6 +39,7 @@
 		A8F9BD808DE2F80CB8EC16B2 /* AllSetStepView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45E470EF67021FAB43C9FD40 /* AllSetStepView.swift */; };
 		ABAFC95F01025AAD22F4EDA3 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 05966A5726A2A79EA73AB8BA /* Assets.xcassets */; };
 		B4D8741D71D242ABC5223987 /* MurmurApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56634B3B5D3BF1AE378F4D4C /* MurmurApp.swift */; };
+		C1A1D04C73E506CFF86F278C /* AutoResizingHostingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43C6AFDC7CE833636F3C2C75 /* AutoResizingHostingView.swift */; };
 		C812B105CE0A5A13B47D12AA /* DictionarySettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3F9EDBFD2ED2A8507F88136 /* DictionarySettingsView.swift */; };
 		CCA6160297EC5A1677B8106D /* Models in Frameworks */ = {isa = PBXBuildFile; productRef = 4DD5278624F94ACBBC4CB11A /* Models */; };
 		D8058781158E83E0241D73EA /* TextInjectionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFEE68381A9D85D803EE04E2 /* TextInjectionService.swift */; };
@@ -57,6 +58,7 @@
 		20A535489FC23A048F50465F /* NoteListViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteListViewModel.swift; sourceTree = "<group>"; };
 		2BA2838AF0232617AD70B0ED /* AXTextInjector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AXTextInjector.swift; sourceTree = "<group>"; };
 		3A6BE2B704383C76E963CE5D /* DictationHUDView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationHUDView.swift; sourceTree = "<group>"; };
+		43C6AFDC7CE833636F3C2C75 /* AutoResizingHostingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoResizingHostingView.swift; sourceTree = "<group>"; };
 		45E470EF67021FAB43C9FD40 /* AllSetStepView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AllSetStepView.swift; sourceTree = "<group>"; };
 		4972456477D1F9BB4680844F /* DictationViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationViewModel.swift; sourceTree = "<group>"; };
 		503DB7609023BC4E566A7714 /* WaveformView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WaveformView.swift; sourceTree = "<group>"; };
@@ -214,6 +216,7 @@
 		9E05F3803E1886FDDEEEA070 /* Dictation */ = {
 			isa = PBXGroup;
 			children = (
+				43C6AFDC7CE833636F3C2C75 /* AutoResizingHostingView.swift */,
 				3A6BE2B704383C76E963CE5D /* DictationHUDView.swift */,
 				18019FF1FCE16A381330EA9F /* DictationHUDWindow.swift */,
 				503DB7609023BC4E566A7714 /* WaveformView.swift */,
@@ -379,6 +382,7 @@
 				A8F9BD808DE2F80CB8EC16B2 /* AllSetStepView.swift in Sources */,
 				49C93E9ADC9925430D2FF31F /* AppContextDetector.swift in Sources */,
 				75BAF3AD145B68E4CA776321 /* AppDelegate.swift in Sources */,
+				C1A1D04C73E506CFF86F278C /* AutoResizingHostingView.swift in Sources */,
 				5B9E5D0B593C149657CD7B8B /* ClipboardFallbackInjector.swift in Sources */,
 				FC564BBFFF03D09806C2DF31 /* ContentView.swift in Sources */,
 				815881730B90205B8C765689 /* DictationHUDView.swift in Sources */,

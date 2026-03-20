@@ -141,7 +141,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let hudView = DictationHUDView()
             .environment(dictationViewModel)
-        let hostingView = NSHostingView(rootView: hudView)
+        let hostingView = AutoResizingHostingView(rootView: hudView)
 
         // Let the hosting view size itself to fit its SwiftUI content
         let fittingSize = hostingView.fittingSize
