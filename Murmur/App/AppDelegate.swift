@@ -43,14 +43,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             personalDictionary: personalDictionary
         )
 
-        // Request mic + speech authorization early so prompts appear on first launch.
-        // This is deferred slightly to avoid CoreAudio initialization during app startup.
-        Task {
-            // Small delay to let the app finish launching before triggering permission dialogs
-            try? await Task.sleep(for: .milliseconds(500))
-            logger.info("Requesting mic + speech authorization...")
-            dictationViewModel.requestAuthorizationIfNeeded()
-        }
+        // Permissions (mic + speech + accessibility) are handled during onboarding.
+        // No need to request them here — setup() only runs after onboarding completes.
 
         // Set up menu bar
         let menuBar = MenuBarController()
@@ -156,6 +150,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Window Management
 
     private func openMainWindow() {
+        NSApp.activate(ignoringOtherApps: true)
+        if let window = NSApp.windows.first(where: { !($0 is NSPanel) }) {
+            window.makeKeyAndOrderFront(nil)
+        }
+    }
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        // Ensure the main window is visible on launch (macOS window restoration
+        // may suppress it if the user closed it in a previous session).
+        // No DispatchQueue.main.async — AppDelegate is @MainActor, already on main.
         NSApp.activate(ignoringOtherApps: true)
         if let window = NSApp.windows.first(where: { !($0 is NSPanel) }) {
             window.makeKeyAndOrderFront(nil)

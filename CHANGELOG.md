@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.1.1] - 2026-03-20
+
+### Fixed
+- Fixed crash on 2nd dictation — layout recursion in HUD pill window (`NSGenericException` from `setContentSize` during layout). Replaced with cancellable `DispatchWorkItem` and 2pt threshold to coalesce rapid resize requests.
+- Fixed text injection targeting Murmur itself — `AppContextDetector` now excludes Murmur, with fallback to `NSWorkspace.shared.frontmostApplication` when no external app has been seen yet.
+- Fixed silent injection failure without accessibility — `CGEvent.post` silently drops Cmd+V without accessibility permission. Now returns `.noAccessibilityPermission` and shows a clear error in the HUD pill.
+- Fixed onboarding threading crash (`_dispatch_assert_queue_fail`) — `SFSpeechRecognizer.requestAuthorization` fires its callback on a background queue, causing `@State` mutations off main thread. Extracted permission logic into `@MainActor` `OnboardingPermissionCoordinator` with mockable `PermissionProvider` protocol.
+- Fixed system permission dialogs appearing outside onboarding — removed redundant `requestAuthorizationIfNeeded()` from `AppDelegate.setup()`, all permissions now handled exclusively in onboarding flow.
+- Fixed onboarding window not appearing on relaunch — added `applicationDidFinishLaunching` to activate app and show main window.
+- Fixed Globe Key step blocking main thread — moved `Process().waitUntilExit()` to `Task.detached`.
+
+### Changed
+- Onboarding mic step now requests both microphone AND speech recognition permissions in a single step.
+- Accessibility onboarding step shows "I've already granted access" button after 5 seconds of polling (works around Xcode debug build TCC quirk).
+- `AppDelegate.setup()` only runs after onboarding completes (moved from `.task` on Group to `.task` on ContentView).
+
+### Added
+- `OnboardingPermissionCoordinator` — testable `@MainActor` coordinator for mic/speech permission requests with `PermissionProvider` protocol.
+- 13 new tests: 8 onboarding permission regression tests (including background-callback crash scenario), 5 threading safety contract tests.
+- Test count: 47 → 60.
+
 ## [0.1.0] - 2026-03-20
 
 ### Phase 1 Foundation — Initial Implementation

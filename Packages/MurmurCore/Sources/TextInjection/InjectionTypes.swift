@@ -9,6 +9,7 @@ public enum InjectionResult: Sendable {
         case noFocusedTextField
         case userDisabledInjection
         case appOptedOut
+        case noAccessibilityPermission
     }
 }
 

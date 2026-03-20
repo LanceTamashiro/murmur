@@ -252,6 +252,13 @@ final class DictationViewModel {
                 logger.info("finalizeDictation: attempting text injection...")
                 let result = await injectionService.inject(text: text)
                 logger.info("finalizeDictation: injection result = \(String(describing: result))")
+
+                if case .skipped(reason: .noAccessibilityPermission) = result {
+                    state = .error("Grant Accessibility in System Settings to enable text injection")
+                    try? await Task.sleep(for: .seconds(4.0))
+                    resetState()
+                    return
+                }
             }
 
             state = .completed

@@ -4,6 +4,8 @@ import AppKit
 struct AccessibilityPermissionStepView: View {
     var onContinue: () -> Void
     @State private var isGranted = false
+    @State private var showManualContinue = false
+    @State private var pollCount = 0
 
     var body: some View {
         VStack(spacing: 24) {
@@ -46,13 +48,42 @@ struct AccessibilityPermissionStepView: View {
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 40)
+
+                if showManualContinue {
+                    Button("I've already granted access — continue") {
+                        onContinue()
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.regular)
+                    .padding(.top, 4)
+
+                    Text("Xcode debug builds may require a relaunch for accessibility to take effect.")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 40)
+                } else {
+                    Button("Skip for now") {
+                        onContinue()
+                    }
+                    .buttonStyle(.plain)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 4)
+                }
             }
         }
         .padding()
         .task {
             isGranted = AXIsProcessTrusted()
             while !isGranted {
-                try? await Task.sleep(for: .seconds(2))
+                try? await Task.sleep(for: .seconds(1))
+                guard !Task.isCancelled else { return }
+                pollCount += 1
+                // After 5 seconds of polling, show the manual continue button
+                if pollCount >= 5 {
+                    showManualContinue = true
+                }
                 let trusted = AXIsProcessTrusted()
                 if trusted {
                     isGranted = true

@@ -33,17 +33,17 @@ struct MurmurApp: App {
             Group {
                 if onboardingCompleted {
                     ContentView()
+                        .task {
+                            appDelegate.setup(
+                                modelContainer: modelContainer,
+                                dictationViewModel: dictationViewModel
+                            )
+                        }
                 } else {
                     OnboardingView()
                 }
             }
             .environment(dictationViewModel)
-            .task {
-                appDelegate.setup(
-                    modelContainer: modelContainer,
-                    dictationViewModel: dictationViewModel
-                )
-            }
         }
         .modelContainer(modelContainer)
 

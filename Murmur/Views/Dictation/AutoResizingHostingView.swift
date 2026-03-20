@@ -4,38 +4,37 @@ import SwiftUI
 /// NSHostingView subclass that automatically resizes its parent window
 /// when the SwiftUI content changes size (e.g., idle pill → recording bar).
 ///
-/// Window resize is deferred to the next run loop iteration to avoid
-/// layout recursion (setContentSize during layout triggers another layout pass).
+/// Uses a cancellable DispatchWorkItem to coalesce rapid layout changes
+/// and avoid the layout recursion that setContentSize triggers.
 final class AutoResizingHostingView<Content: View>: NSHostingView<Content> {
     private var lastAppliedSize: NSSize = .zero
-    private var resizePending = false
+    private var resizeWorkItem: DispatchWorkItem?
 
     override func layout() {
         super.layout()
 
-        guard window != nil, !resizePending else { return }
+        guard window != nil else { return }
 
         let newSize = fittingSize
 
-        // Only resize if the size genuinely changed (compare against what we last applied)
-        guard abs(newSize.width - lastAppliedSize.width) > 1
-           || abs(newSize.height - lastAppliedSize.height) > 1 else { return }
+        // Only resize if genuinely changed (2pt threshold avoids sub-pixel oscillation)
+        guard abs(newSize.width - lastAppliedSize.width) > 2
+           || abs(newSize.height - lastAppliedSize.height) > 2 else { return }
 
-        lastAppliedSize = newSize
-        resizePending = true
+        // Cancel any pending resize to coalesce rapid state transitions
+        resizeWorkItem?.cancel()
 
-        // Defer resize to avoid layout recursion — setContentSize triggers constraints
-        // update which triggers layout, causing an infinite loop if done synchronously.
-        DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            self.resizePending = false
-            guard let window = self.window else { return }
-
-            window.setContentSize(self.lastAppliedSize)
-
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self, let window = self.window else { return }
+            // Re-read fittingSize at execution time to get the settled value
+            let size = self.fittingSize
+            self.lastAppliedSize = size
+            window.setContentSize(size)
             if let hudWindow = window as? DictationHUDWindow {
                 hudWindow.positionBottomCenter()
             }
         }
+        resizeWorkItem = workItem
+        DispatchQueue.main.async(execute: workItem)
     }
 }

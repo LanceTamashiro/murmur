@@ -70,17 +70,19 @@ struct GlobeKeyStepView: View {
 
     /// Set the Globe key to "Do Nothing" so Murmur can capture it
     private func setGlobeKeyToDoNothing() {
-        let task = Process()
-        task.executableURL = URL(fileURLWithPath: "/usr/bin/defaults")
-        task.arguments = ["write", "com.apple.HIToolbox", "AppleFnUsageType", "-int", "0"]
-        try? task.run()
-        task.waitUntilExit()
+        Task.detached {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/defaults")
+            process.arguments = ["write", "com.apple.HIToolbox", "AppleFnUsageType", "-int", "0"]
+            try? process.run()
+            process.waitUntilExit()
 
-        didAttemptSet = true
-
-        // Check if it took effect
-        if currentGlobeKeySetting() == 0 {
-            isConfigured = true
+            await MainActor.run {
+                didAttemptSet = true
+                if currentGlobeKeySetting() == 0 {
+                    isConfigured = true
+                }
+            }
         }
     }
 }

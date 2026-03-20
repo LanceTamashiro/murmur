@@ -37,6 +37,11 @@ xcodegen generate
 - **Sentence-boundary isFinal:** `DictationTranscriber` produces `isFinal=true` at sentence boundaries, not just session end. The ViewModel accumulates these into `finalizedSegments[]` and only saves/injects on `sessionEnded`.
 - **Globe key requires accessibility + "Do Nothing" setting:** `NSEvent.addGlobalMonitorForEvents(matching: .flagsChanged)` silently fails without accessibility permission. Globe key (keyCode 63) only fires if `AppleFnUsageType = 0`.
 - **Always save as note:** Every dictation is saved as a Note regardless of whether text injection succeeds. History is always preserved.
+- **System callback threading:** `SFSpeechRecognizer.requestAuthorization` fires on a background queue. `withCheckedContinuation` does NOT hop back to `@MainActor` — use `await MainActor.run { }` or extract logic into `@MainActor` classes. Never rely on `@MainActor` annotations on struct methods for continuation safety.
+- **CGEvent.post requires accessibility:** `CGEvent.post(tap: .cghidEventTap)` silently drops events without accessibility permission. Always check `AXIsProcessTrusted()` before attempting clipboard paste injection.
+- **Onboarding before setup:** `AppDelegate.setup()` only runs after `onboardingCompleted = true`. All permission requests happen in the onboarding flow, not in setup.
+- **Xcode debug builds + accessibility:** TCC accessibility grants may not take effect until the debug build is relaunched. Onboarding handles this with a "I've already granted access" fallback button.
+- **Non-sandboxed debug plist:** Xcode debug builds use `~/Library/Preferences/com.unconventionalpsychotherapy.murmur.plist`, not the sandboxed container. Reset onboarding with: `defaults write ~/Library/Preferences/com.unconventionalpsychotherapy.murmur.plist onboardingCompleted -bool false`
 
 ## Debugging
 
@@ -61,7 +66,8 @@ xcodegen generate
 
 ## Testing
 
-- 47 tests across 3 suites: NoteStoreService, PersonalDictionaryService, MockSpeechEngine
-- All tests use in-memory `ModelContainer` or `MockSpeechEngine`
-- Tests cover: CRUD, search, trash/restore, auth flows, mic permission, session lifecycle, event streaming, error types
+- 60 tests across 5 suites: NoteStoreService, PersonalDictionaryService, MockSpeechEngine, OnboardingPermissionCoordinator, ThreadingSafety
+- All tests use in-memory `ModelContainer`, `MockSpeechEngine`, or `BackgroundCallbackPermissionProvider`
+- Tests cover: CRUD, search, trash/restore, auth flows, mic permission, session lifecycle, event streaming, error types, threading safety, onboarding permission flow
 - Swift 6 strict concurrency: async stream tests use `actor`-based collectors for Sendable safety
+- Threading regression tests: `BackgroundCallbackPermissionProvider` fires callbacks on `DispatchQueue.global()` to reproduce the exact crash scenario from `SFSpeechRecognizer`

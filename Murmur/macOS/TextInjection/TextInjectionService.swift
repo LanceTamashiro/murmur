@@ -19,11 +19,22 @@ final class TextInjectionService {
     }
 
     func inject(text: String) async -> InjectionResult {
-        // Capture target app context upfront (may change during async work)
-        guard let targetContext = appContextDetector.currentAppContext else {
-            logger.warning("inject: no frontmost app context — skipping")
+        // Resolve target: prefer tracked context, fall back to current frontmost (excluding Murmur)
+        let targetContext: AppContext
+        if let tracked = appContextDetector.currentAppContext {
+            targetContext = tracked
+        } else if let frontApp = NSWorkspace.shared.frontmostApplication,
+                  frontApp.bundleIdentifier != Bundle.main.bundleIdentifier {
+            targetContext = AppContext(
+                bundleIdentifier: frontApp.bundleIdentifier ?? "unknown",
+                displayName: frontApp.localizedName ?? "Unknown",
+                processID: frontApp.processIdentifier
+            )
+        } else {
+            logger.warning("inject: no external target app — skipping")
             return .skipped(reason: .noFocusedTextField)
         }
+
         logger.info("inject: target app = \(targetContext.displayName) (pid=\(targetContext.processID)), AX=\(self.hasAccessibilityPermission)")
 
         // Try accessibility injection first
@@ -39,8 +50,10 @@ final class TextInjectionService {
             }
         }
 
+        // CGEvent.post requires accessibility — without it, Cmd+V is silently dropped
         if !hasAccessibilityPermission {
-            logger.warning("inject: accessibility not granted — CGEvent.post may silently fail. Grant accessibility in System Settings > Privacy > Accessibility.")
+            logger.error("inject: accessibility permission required for Cmd+V paste — grant in System Settings > Privacy > Accessibility")
+            return .skipped(reason: .noAccessibilityPermission)
         }
 
         // Re-activate target app before clipboard paste (focus may have drifted)
