@@ -10,7 +10,7 @@ let previewContainer: ModelContainer = {
     let sampleNotes = [
         Note(bodyMarkdown: "Discussed the Q1 roadmap and team priorities for the next sprint."),
         Note(bodyMarkdown: "Remember to follow up with Sarah about the documentation review."),
-        Note(bodyMarkdown: "Progress on CBT exercises. Client reports improved sleep patterns."),
+        Note(bodyMarkdown: "Ideas for the new feature launch — need to finalize the timeline by Friday."),
     ]
 
     for note in sampleNotes {

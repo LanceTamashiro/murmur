@@ -68,6 +68,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     onStartDictating: { self?.handleToggle() },
                     onOpenLibrary: { self?.openMainWindow() }
                 )
+                .modelContainer(modelContainer)
             )
         }
         menuBarController = menuBar
@@ -85,6 +86,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             onToggle: { [weak self] in self?.handleToggle() }
         )
         hotkeyMonitor = hotkey
+
+        // Check for recovered session from a crash
+        if let recovery = SessionRecoveryManager.checkForRecovery() {
+            logger.info("setup: found recovered session (\(recovery.text.count) chars)")
+            if SessionRecoveryManager.restoreAsNote(recovery: recovery, noteStore: noteStore) {
+                logger.info("setup: recovered session restored as note")
+            }
+        }
 
         // Show the flow bar pill at bottom of screen
         showFlowBar()

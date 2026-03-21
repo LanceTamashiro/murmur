@@ -75,15 +75,18 @@ xcodegen generate
 | Flow bar pill | `Murmur/Views/Dictation/DictationHUDView.swift` |
 | Globe key monitor | `Murmur/macOS/HotkeyMonitor/GlobalHotkeyMonitor.swift` |
 | Text injection | `Murmur/macOS/TextInjection/` |
+| Session recovery | `Murmur/Services/SessionRecoveryManager.swift` |
+| Note exporter | `Murmur/Services/NoteExporter.swift` |
+| Audio settings | `Murmur/Views/Settings/AudioSettingsView.swift` |
 | Full spec | `requirements-spec.md` |
-| Plan | `.claude/plans/warm-gliding-aho.md` |
+| Plan | `.claude/plans/reactive-imagining-kurzweil.md` |
 
 ## Testing
 
-- 92 tests across 12 suites: NoteStoreService, PersonalDictionaryService, MockSpeechEngine, OnboardingPermissionCoordinator, ThreadingSafety (MurmurCore: 64), plus DictationViewModelRace, EarlyInjection, TextInjection, MockSpeechEngineRace, AppDelegateSetup, TriggerKey, ToggleMaxDuration (MurmurTests: 28)
+- 96+ tests across 13 suites: NoteStoreService, PersonalDictionaryService, MockSpeechEngine, OnboardingPermissionCoordinator, ThreadingSafety (MurmurCore: 64), plus DictationViewModelRace, EarlyInjection, TextInjection, MockSpeechEngineRace, AppDelegateSetup, TriggerKey, ToggleMaxDuration, SessionRecovery (MurmurTests: 32+)
 - All tests use in-memory `ModelContainer`, `MockSpeechEngine`, or `BackgroundCallbackPermissionProvider`
-- Tests cover: CRUD, search, trash/restore, auth flows, mic permission, session lifecycle, event streaming, error types, threading safety, onboarding permission flow, race conditions, early injection (snapshot text, tail text update, empty snapshot fallback, no double injection), text injection into TextEdit, TriggerKey enum validation, toggle/cancel state management
-- TextInjection tests launch TextEdit, inject text via AX API, and verify it arrived — require accessibility permission (skip if not granted)
+- Tests cover: CRUD, search, trash/restore, auth flows, mic permission, session lifecycle, event streaming, error types, threading safety, onboarding permission flow, race conditions, early injection (snapshot text, tail text update, empty snapshot fallback, no double injection), text injection into TextEdit, TriggerKey enum validation, toggle/cancel state management, session recovery (encode/decode, restore, periodic save)
+- TextInjection tests launch TextEdit, inject text via AX API, and verify it arrived — require accessibility permission (skip if not granted). Tests use `.serialized` and AX readiness polling for reliability.
 - Swift 6 strict concurrency: async stream tests use `actor`-based collectors for Sendable safety
 - Threading regression tests: `BackgroundCallbackPermissionProvider` fires callbacks on `DispatchQueue.global()` to reproduce the exact crash scenario from `SFSpeechRecognizer`
 - **Do NOT run `xcodebuild test -scheme Murmur` without `-only-testing:`** — macOS 26 beta crashes the test host (`BSBlockSentinel:FBSWorkspaceScenesClient`). Always use `./scripts/run-tests.sh` which rebuilds and runs each suite separately, checking actual Swift Testing output rather than xcodebuild exit codes.

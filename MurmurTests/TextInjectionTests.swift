@@ -9,45 +9,114 @@ import ApplicationServices
 /// Requires accessibility permission on the test host (Xcode/xcodebuild).
 /// Skips gracefully if AX permission is not granted.
 @MainActor
-@Suite("Text Injection Tests")
+@Suite("Text Injection Tests", .serialized)
 struct TextInjectionTests {
 
-    // MARK: - AXTextInjector targets app by PID
+    // MARK: - Helpers
 
-    @Test func axInjectorTargetsSpecificAppByPID() async throws {
-        // Skip if no accessibility permission
-        guard AXIsProcessTrusted() else {
-            return
+    private enum TextEditSetupError: Error, CustomStringConvertible {
+        case timeout
+        var description: String { "TextEdit did not produce a writable text element within timeout" }
+    }
+
+    /// Poll until TextEdit has a focused, AX-writable text element, or throw on timeout.
+    private func waitForWritableElement(
+        pid: pid_t,
+        timeout: Duration = .seconds(8)
+    ) async throws {
+        let deadline = ContinuousClock.now + timeout
+        while ContinuousClock.now < deadline {
+            let app = AXUIElementCreateApplication(pid)
+            var focused: AnyObject?
+            let res = AXUIElementCopyAttributeValue(
+                app, kAXFocusedUIElementAttribute as CFString, &focused
+            )
+            if res == .success, let el = focused {
+                let axEl = el as! AXUIElement
+                // Check if value attribute exists (text field is present)
+                var currentValue: AnyObject?
+                let valueRes = AXUIElementCopyAttributeValue(axEl, kAXValueAttribute as CFString, &currentValue)
+                if valueRes == .success {
+                    // Also check settable
+                    var settable: DarwinBoolean = false
+                    AXUIElementIsAttributeSettable(axEl, kAXValueAttribute as CFString, &settable)
+                    if settable.boolValue {
+                        return
+                    }
+                }
+            }
+            try await Task.sleep(for: .milliseconds(200))
         }
+        throw TextEditSetupError.timeout
+    }
 
-        // Launch TextEdit
-        let textEditURL = URL(fileURLWithPath: "/System/Applications/TextEdit.app")
-        let config = NSWorkspace.OpenConfiguration()
-        config.activates = true
-
-        let textEdit = try await NSWorkspace.shared.openApplication(
-            at: textEditURL,
-            configuration: config
-        )
-
-        // Wait for TextEdit to become frontmost and create a window
-        try await Task.sleep(for: .milliseconds(1000))
-
-        // Create a new document (Cmd+N) to ensure a text field is focused
+    /// Send Cmd+N keystroke to create a new document.
+    private func sendCmdN() {
         let cmdN_Down = CGEvent(keyboardEventSource: nil, virtualKey: 0x2D, keyDown: true)!
         let cmdN_Up = CGEvent(keyboardEventSource: nil, virtualKey: 0x2D, keyDown: false)!
         cmdN_Down.flags = .maskCommand
         cmdN_Up.flags = .maskCommand
         cmdN_Down.post(tap: .cghidEventTap)
         cmdN_Up.post(tap: .cghidEventTap)
+    }
+
+    /// Launch TextEdit and ensure it has a writable text field ready for injection.
+    private func launchTextEditWithNewDocument() async throws -> NSRunningApplication {
+        let url = URL(fileURLWithPath: "/System/Applications/TextEdit.app")
+        let config = NSWorkspace.OpenConfiguration()
+        config.activates = true
+
+        let textEdit = try await NSWorkspace.shared.openApplication(
+            at: url,
+            configuration: config
+        )
+
+        // Wait for TextEdit to launch
         try await Task.sleep(for: .milliseconds(500))
 
-        // Inject text targeting TextEdit by PID
+        // Check if TextEdit already has a writable element (reopened a prior doc)
+        do {
+            try await waitForWritableElement(pid: textEdit.processIdentifier, timeout: .seconds(2))
+            return textEdit
+        } catch {
+            // No writable element yet — send Cmd+N to create a new document
+        }
+
+        sendCmdN()
+
+        // Poll for writable element after Cmd+N
+        try await waitForWritableElement(pid: textEdit.processIdentifier, timeout: .seconds(5))
+        return textEdit
+    }
+
+    /// Inject text with a single retry if the first attempt fails.
+    private func injectWithRetry(
+        injector: AXTextInjector,
+        text: String,
+        targetPID: pid_t
+    ) async -> InjectionResult {
+        let result = injector.inject(text: text, targetPID: targetPID)
+        if case .failed = result {
+            try? await Task.sleep(for: .milliseconds(500))
+            return injector.inject(text: text, targetPID: targetPID)
+        }
+        return result
+    }
+
+    // MARK: - AXTextInjector targets app by PID
+
+    @Test func axInjectorTargetsSpecificAppByPID() async throws {
+        guard AXIsProcessTrusted() else { return }
+
+        let textEdit = try await launchTextEditWithNewDocument()
+        defer {
+            textEdit.terminate()
+        }
+
         let injector = AXTextInjector()
         let testText = "Murmur injection test \(UUID().uuidString.prefix(8))"
-        let result = injector.inject(text: testText, targetPID: textEdit.processIdentifier)
+        let result = await injectWithRetry(injector: injector, text: testText, targetPID: textEdit.processIdentifier)
 
-        // Verify injection succeeded
         #expect(result == .success(strategy: .accessibilityDirect),
                 "Expected .success(accessibilityDirect), got \(result)")
 
@@ -67,48 +136,20 @@ struct TextInjectionTests {
                         "TextEdit should contain injected text. Got: \(textValue.prefix(100))")
             }
         }
-
-        // Clean up: close TextEdit
-        textEdit.terminate()
-        try await Task.sleep(for: .milliseconds(300))
     }
 
     // MARK: - Full injection flow via TextInjectionService
 
     @Test func fullInjectionServiceFlowInjectsIntoTextEdit() async throws {
-        guard AXIsProcessTrusted() else {
-            return
+        guard AXIsProcessTrusted() else { return }
+
+        let textEdit = try await launchTextEditWithNewDocument()
+        defer {
+            textEdit.terminate()
         }
 
-        // Launch TextEdit
-        let textEditURL = URL(fileURLWithPath: "/System/Applications/TextEdit.app")
-        let config = NSWorkspace.OpenConfiguration()
-        config.activates = true
-
-        let textEdit = try await NSWorkspace.shared.openApplication(
-            at: textEditURL,
-            configuration: config
-        )
-
-        try await Task.sleep(for: .milliseconds(1000))
-
-        // New document
-        let cmdN_Down = CGEvent(keyboardEventSource: nil, virtualKey: 0x2D, keyDown: true)!
-        let cmdN_Up = CGEvent(keyboardEventSource: nil, virtualKey: 0x2D, keyDown: false)!
-        cmdN_Down.flags = .maskCommand
-        cmdN_Up.flags = .maskCommand
-        cmdN_Down.post(tap: .cghidEventTap)
-        cmdN_Up.post(tap: .cghidEventTap)
-        try await Task.sleep(for: .milliseconds(500))
-
-        // Set up the injection service with AppContextDetector
         let detector = AppContextDetector()
         let service = TextInjectionService(appContextDetector: detector)
-
-        // Manually set the context to TextEdit (since Murmur is the test host)
-        // We can't set currentAppContext directly, so we use the fallback path
-        // in inject() which checks NSWorkspace.shared.frontmostApplication.
-        // TextEdit should be frontmost since we just activated it.
 
         let testText = "Service injection test \(UUID().uuidString.prefix(8))"
         let result = await service.inject(text: testText)
@@ -137,66 +178,40 @@ struct TextInjectionTests {
                         "TextEdit should contain injected text. Got: \(textValue.prefix(100))")
             }
         }
-
-        // Clean up
-        textEdit.terminate()
-        try await Task.sleep(for: .milliseconds(300))
     }
 
     // MARK: - Injection with Murmur as frontmost still works
 
     @Test func injectionWorksEvenWhenMurmurIsFrontmost() async throws {
-        guard AXIsProcessTrusted() else {
-            return
+        guard AXIsProcessTrusted() else { return }
+
+        let textEdit = try await launchTextEditWithNewDocument()
+        defer {
+            textEdit.terminate()
         }
 
-        // Launch TextEdit and create a new document
-        let textEditURL = URL(fileURLWithPath: "/System/Applications/TextEdit.app")
-        let config = NSWorkspace.OpenConfiguration()
-        config.activates = true
-
-        let textEdit = try await NSWorkspace.shared.openApplication(
-            at: textEditURL,
-            configuration: config
-        )
-
-        try await Task.sleep(for: .milliseconds(1000))
-
-        let cmdN_Down = CGEvent(keyboardEventSource: nil, virtualKey: 0x2D, keyDown: true)!
-        let cmdN_Up = CGEvent(keyboardEventSource: nil, virtualKey: 0x2D, keyDown: false)!
-        cmdN_Down.flags = .maskCommand
-        cmdN_Up.flags = .maskCommand
-        cmdN_Down.post(tap: .cghidEventTap)
-        cmdN_Up.post(tap: .cghidEventTap)
-        try await Task.sleep(for: .milliseconds(500))
-
-        // Now bring Murmur (test host) to front — simulating the HUD stealing focus
+        // Bring Murmur (test host) to front — simulating the HUD stealing focus
         NSApp.activate(ignoringOtherApps: true)
         try await Task.sleep(for: .milliseconds(300))
 
-        // Inject directly into TextEdit by PID — should work even though Murmur is frontmost
+        // Reactivate TextEdit (simulating what TextInjectionService does)
+        textEdit.activate()
+
+        // Poll until TextEdit is writable again
+        try await waitForWritableElement(pid: textEdit.processIdentifier, timeout: .seconds(5))
+
         let injector = AXTextInjector()
         let testText = "Background inject \(UUID().uuidString.prefix(8))"
+        let result = await injectWithRetry(injector: injector, text: testText, targetPID: textEdit.processIdentifier)
 
-        // Reactivate TextEdit first (simulating what TextInjectionService does)
-        textEdit.activate()
-        try await Task.sleep(for: .milliseconds(150))
-
-        let result = injector.inject(text: testText, targetPID: textEdit.processIdentifier)
         #expect(result == .success(strategy: .accessibilityDirect),
                 "Expected .success(accessibilityDirect), got \(result)")
-
-        // Clean up
-        textEdit.terminate()
-        try await Task.sleep(for: .milliseconds(300))
     }
 
     // MARK: - AX injection with invalid PID fails gracefully
 
     @Test func axInjectionWithInvalidPIDFailsGracefully() {
-        guard AXIsProcessTrusted() else {
-            return
-        }
+        guard AXIsProcessTrusted() else { return }
 
         let injector = AXTextInjector()
         let result = injector.inject(text: "test", targetPID: 99999)

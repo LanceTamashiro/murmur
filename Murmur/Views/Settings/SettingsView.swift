@@ -7,6 +7,10 @@ struct SettingsView: View {
                 .tabItem {
                     Label("General", systemImage: "gear")
                 }
+            AudioSettingsView()
+                .tabItem {
+                    Label("Audio", systemImage: "waveform")
+                }
             DictionarySettingsView()
                 .tabItem {
                     Label("Dictionary", systemImage: "character.book.closed")

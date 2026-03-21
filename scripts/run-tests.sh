@@ -31,6 +31,7 @@ SUITES=(
     "AppDelegateSetupTests"
     "MockSpeechEngineRaceTests"
     "TextInjectionTests"
+    "SessionRecoveryTests"
 )
 
 record_result() {

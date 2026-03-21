@@ -17,6 +17,19 @@ struct EditorToolbar: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Spacer()
+
+            Menu {
+                ForEach(ExportFormat.allCases, id: \.rawValue) { format in
+                    Button(format.rawValue) {
+                        NoteExporter.export(note: note, format: format)
+                    }
+                }
+            } label: {
+                Label("Export", systemImage: "square.and.arrow.up")
+            }
+            .fixedSize()
+            .disabled(note.bodyMarkdown.isEmpty)
+
             Button(action: copyToClipboard) {
                 Label(showCopied ? "Copied!" : "Copy", systemImage: showCopied ? "checkmark" : "doc.on.doc")
             }

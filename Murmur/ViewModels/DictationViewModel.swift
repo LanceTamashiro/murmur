@@ -35,6 +35,9 @@ final class DictationViewModel {
     private var eventTask: Task<Void, Never>?
     private var amplitudeTask: Task<Void, Never>?
     private var maxDurationTask: Task<Void, Never>?
+    private var finalizationTask: Task<Void, Never>?
+    private var sessionHasEnded = false
+    private let recoveryManager = SessionRecoveryManager()
 
     /// Tracks early injection: when the user releases the globe key, we inject
     /// the already-accumulated text immediately (without waiting for analyzer
@@ -111,6 +114,7 @@ final class DictationViewModel {
         state = .recording
         liveTranscript = ""
         finalizedSegments = []
+        sessionHasEnded = false
         lastLanguage = "en-US"
         amplitudes = Array(repeating: 0.05, count: 20)
         sessionStartTime = Date()
@@ -166,6 +170,11 @@ final class DictationViewModel {
                     return
                 }
 
+                // Apply whisper mode setting before starting session
+                if let engine = speechEngine as? DictationTranscriberEngine {
+                    engine.whisperModeEnabled = UserDefaults.standard.bool(forKey: "whisperMode")
+                }
+
                 let vocabulary = (try? personalDictionary?.vocabularyWords()) ?? []
                 logger.info("startDictation: starting speech session...")
                 let sessionID = try await speechEngine.startSession(locale: nil, customVocabulary: vocabulary)
@@ -180,6 +189,17 @@ final class DictationViewModel {
 
                 currentSessionID = sessionID
                 logger.info("startDictation: session started successfully (id=\(sessionID))")
+
+                // Start periodic recovery saves
+                let sourceApp = self.textInjectionService?.appContextDetector.currentAppContext?.bundleIdentifier
+                self.recoveryManager.startPeriodicSave(
+                    textProvider: { [weak self] in
+                        guard let self else { return nil }
+                        let text = self.finalizedSegments.isEmpty ? self.liveTranscript : self.finalizedSegments.joined()
+                        return (text: text, language: self.lastLanguage, sourceApp: sourceApp)
+                    },
+                    startTime: self.sessionStartTime ?? Date()
+                )
 
                 // Consume transcription events
                 eventTask = Task {
@@ -241,6 +261,17 @@ final class DictationViewModel {
             Task {
                 await speechEngine.stopSession()
             }
+
+            // Safety net: if state hasn't returned to .idle within 15 seconds,
+            // force reset. Catches unforeseen edge cases where both the
+            // finalizationTask and .sessionEnded fail to reset state.
+            Task {
+                try? await Task.sleep(for: .seconds(15))
+                if state != .idle {
+                    logger.warning("stopDictation: safety timeout — forcing reset from \(String(describing: self.state))")
+                    resetState()
+                }
+            }
         } else {
             // Session hasn't started yet — the startup Task is still in its async
             // preamble (e.g., waiting for mic permission). Cancel it and reset.
@@ -259,14 +290,12 @@ final class DictationViewModel {
     private var lastLanguage: String = "en-US"
 
     private func handleTranscriptionEvent(_ event: TranscriptionEvent) {
-        logger.info("handleTranscriptionEvent: \(String(describing: event))")
         switch event {
         case .partial(let result):
             // Show accumulated finals + current partial as the live transcript
             let accumulated = finalizedSegments.joined()
             liveTranscript = accumulated + result.text
-            let currentTranscript = liveTranscript
-            logger.info("Partial transcript: \"\(currentTranscript.prefix(100))\"")
+            logger.debug("Partial transcript: \(self.liveTranscript.count) chars")
 
         case .final(let result):
             // Accumulate finalized segments — don't save yet, more text may follow.
@@ -274,8 +303,7 @@ final class DictationViewModel {
             finalizedSegments.append(result.text)
             lastLanguage = result.language
             liveTranscript = finalizedSegments.joined()
-            let currentTranscript = liveTranscript
-            logger.info("Final segment: \"\(result.text.prefix(100))\" (total so far: \"\(currentTranscript.prefix(100))\")")
+            logger.info("Final segment received (segments=\(self.finalizedSegments.count), total=\(self.liveTranscript.count) chars)")
 
         case .error(let error):
             logger.error("Transcription error: \(error)")
@@ -288,8 +316,9 @@ final class DictationViewModel {
 
         case .sessionEnded(_, let duration):
             let fullText = finalizedSegments.isEmpty ? liveTranscript : finalizedSegments.joined()
-            logger.info("Session ended (duration=\(duration)s, segments=\(self.finalizedSegments.count), text=\"\(fullText.prefix(100))\")")
+            logger.info("Session ended (duration=\(duration)s, segments=\(self.finalizedSegments.count), chars=\(fullText.count))")
             saveDictationSession(duration: duration)
+            sessionHasEnded = true
 
             if let earlyNoteID = earlyInjectionNoteID {
                 // Early injection already happened — update the note if
@@ -300,8 +329,13 @@ final class DictationViewModel {
                     logger.info("sessionEnded: updating note with tail text (\(fullText.count) vs \(earlyCount) chars)")
                     try? noteStore?.updateNote(earlyNoteID, bodyMarkdown: fullText)
                 }
-                earlyInjectionNoteID = nil
-                earlyInjectionText = nil
+                // Show completed state briefly, then reset to idle.
+                state = .completed
+                liveTranscript = fullText.isEmpty ? (earlyInjectionText ?? "") : fullText
+                Task {
+                    try? await Task.sleep(for: .seconds(2.0))
+                    resetState()
+                }
             } else {
                 // No early injection (text was empty at stop time) — inject normally
                 if !fullText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -321,19 +355,20 @@ final class DictationViewModel {
             return
         }
 
-        logger.info("finalizeDictation: \"\(text.prefix(100))\" (language=\(language), early=\(isEarlySnapshot))")
+        logger.info("finalizeDictation: \(text.count) chars (language=\(language), early=\(isEarlySnapshot))")
 
-        Task {
-            // ALWAYS save as a note — every dictation is recorded in history
-            let noteID = saveAsNote(text: text, language: language)
+        // Save note synchronously (SwiftData, on MainActor) — ensures
+        // earlyInjectionNoteID is set BEFORE any async work, eliminating the
+        // race with .sessionEnded.
+        let noteID = saveAsNote(text: text, language: language)
 
-            if isEarlySnapshot {
-                // Track this so sessionEnded can update the note with tail text
-                earlyInjectionNoteID = noteID
-                earlyInjectionText = text
-            }
+        if isEarlySnapshot {
+            earlyInjectionNoteID = noteID
+            earlyInjectionText = text
+        }
 
-            // Also try to inject into frontmost app's text field
+        finalizationTask = Task {
+            // Try to inject into frontmost app's text field
             if let injectionService = textInjectionService {
                 logger.info("finalizeDictation: attempting text injection...")
                 let result = await injectionService.inject(text: text)
@@ -345,17 +380,25 @@ final class DictationViewModel {
                     liveTranscript = "Copied to clipboard — press ⌘V to paste"
                     state = .completed
                     try? await Task.sleep(for: .seconds(3.0))
-                    resetState()
+                    if !isEarlySnapshot || sessionHasEnded {
+                        resetState()
+                    }
                     return
                 }
             }
 
-            state = .completed
-            liveTranscript = text
-
-            // Auto-dismiss after completion
-            try? await Task.sleep(for: .seconds(2.0))
-            resetState()
+            if isEarlySnapshot {
+                // Don't reset here — .sessionEnded is the single authority for
+                // resetting state in the early-injection path. Just show completed.
+                state = .completed
+                liveTranscript = text
+            } else {
+                // Non-early path: this finalizeDictation owns the full lifecycle.
+                state = .completed
+                liveTranscript = text
+                try? await Task.sleep(for: .seconds(2.0))
+                resetState()
+            }
         }
     }
 
@@ -365,7 +408,7 @@ final class DictationViewModel {
             logger.error("saveAsNote: noteStore is nil!")
             return nil
         }
-        logger.info("saveAsNote: saving note \"\(text.prefix(50))\"")
+        logger.info("saveAsNote: saving note (\(text.count) chars)")
         do {
             let note = try noteStore.createNote(
                 bodyMarkdown: text,
@@ -373,6 +416,7 @@ final class DictationViewModel {
                 language: language
             )
             logger.info("saveAsNote: note saved successfully (id=\(note.id))")
+            recoveryManager.clearRecovery()
             return note.id
         } catch {
             logger.error("saveAsNote: FAILED — \(error)")
@@ -415,14 +459,18 @@ final class DictationViewModel {
 
     private func resetState() {
         state = .idle
+        recoveryManager.stopPeriodicSave()
         startupTask?.cancel()
         startupTask = nil
         eventTask?.cancel()
         amplitudeTask?.cancel()
         maxDurationTask?.cancel()
+        finalizationTask?.cancel()
         eventTask = nil
         amplitudeTask = nil
         maxDurationTask = nil
+        finalizationTask = nil
+        sessionHasEnded = false
         currentSessionID = nil
         sessionStartTime = nil
         finalizedSegments = []

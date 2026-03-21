@@ -20,6 +20,11 @@ public final class DictationTranscriberEngine: SpeechEngineProtocol, @unchecked 
     private var detectionTask: Task<Void, Never>?
     private var inputContinuation: AsyncStream<AnalyzerInput>.Continuation?
 
+    /// When true, applies +12dB gain boost for quiet/whisper speech.
+    public var whisperModeEnabled: Bool = false
+    /// +12dB ≈ 4x amplitude multiplier
+    private let whisperGainMultiplier: Float = 3.981 // pow(10, 12.0/20.0)
+
     private var eventContinuation: AsyncStream<TranscriptionEvent>.Continuation?
     private var amplitudeContinuation: AsyncStream<Float>.Continuation?
 
@@ -181,8 +186,22 @@ public final class DictationTranscriberEngine: SpeechEngineProtocol, @unchecked 
         let hardwareFormat = inputNode.outputFormat(forBus: 0)
 
         // Use a larger buffer to avoid CoreAudio overload warnings
+        let applyWhisperGain = self.whisperModeEnabled
+        let gainMultiplier = self.whisperGainMultiplier
+
         inputNode.installTap(onBus: 0, bufferSize: 4096, format: hardwareFormat) { [weak self] buffer, _ in
             guard let self else { return }
+
+            // Apply whisper mode gain boost if enabled
+            if applyWhisperGain, let channelData = buffer.floatChannelData {
+                let frameCount = Int(buffer.frameLength)
+                let channelCount = Int(buffer.format.channelCount)
+                for ch in 0..<channelCount {
+                    for i in 0..<frameCount {
+                        channelData[ch][i] = max(-1.0, min(1.0, channelData[ch][i] * gainMultiplier))
+                    }
+                }
+            }
 
             // Calculate amplitude for waveform
             if let channelData = buffer.floatChannelData?[0] {
@@ -240,7 +259,7 @@ public final class DictationTranscriberEngine: SpeechEngineProtocol, @unchecked 
                     }
 
                     let text = String(result.text.characters)
-                    logger.info("Transcription result: isFinal=\(result.isFinal), text=\"\(text.prefix(100))\"")
+                    logger.info("Transcription result: isFinal=\(result.isFinal), length=\(text.count)")
                     let transcriptionResult = TranscriptionResult(
                         text: text,
                         isFinal: result.isFinal,

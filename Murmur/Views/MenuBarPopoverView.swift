@@ -5,7 +5,7 @@ import Models
 struct MenuBarPopoverView: View {
     var onStartDictating: () -> Void = {}
     var onOpenLibrary: () -> Void = {}
-    @AppStorage("clinicalMode") private var clinicalMode = true
+    @Environment(\.modelContext) private var modelContext
     @Query(
         filter: #Predicate<Note> { !$0.isTrashed },
         sort: \Note.createdAt,
@@ -13,33 +13,66 @@ struct MenuBarPopoverView: View {
     )
     private var recentNotes: [Note]
 
+    @State private var quickNoteText = ""
+    @State private var showQuickNote = false
+    @FocusState private var quickNoteFocused: Bool
+
     var body: some View {
         VStack(spacing: 0) {
             // Header
             HStack {
                 Text("Murmur")
                     .font(.headline)
-                if clinicalMode {
-                    HStack(spacing: 3) {
-                        Image(systemName: "lock.shield")
-                            .font(.caption2)
-                        Text("Clinical")
-                            .font(.caption2)
-                            .fontWeight(.medium)
-                    }
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(.green.opacity(0.2))
-                    .foregroundStyle(.green)
-                    .clipShape(Capsule())
+                HStack(spacing: 3) {
+                    Image(systemName: "lock.shield")
+                        .font(.caption2)
+                    Text("On-Device")
+                        .font(.caption2)
+                        .fontWeight(.medium)
                 }
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(.green.opacity(0.2))
+                .foregroundStyle(.green)
+                .clipShape(Capsule())
                 Spacer()
+                Button(action: { showQuickNote.toggle() }) {
+                    Image(systemName: "square.and.pencil")
+                }
+                .buttonStyle(.plain)
+                .help("Quick Note")
                 Button(action: openSettings) {
                     Image(systemName: "gear")
                 }
                 .buttonStyle(.plain)
             }
             .padding()
+
+            // Quick Note input
+            if showQuickNote {
+                VStack(spacing: 8) {
+                    TextEditor(text: $quickNoteText)
+                        .font(.body)
+                        .frame(height: 60)
+                        .scrollContentBackground(.hidden)
+                        .padding(6)
+                        .background(RoundedRectangle(cornerRadius: 6).fill(.quaternary.opacity(0.5)))
+                        .focused($quickNoteFocused)
+                    HStack {
+                        Spacer()
+                        Button("Save") {
+                            saveQuickNote()
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                        .disabled(quickNoteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .keyboardShortcut(.return, modifiers: .command)
+                    }
+                }
+                .padding(.horizontal)
+                .padding(.bottom, 8)
+                .onAppear { quickNoteFocused = true }
+            }
 
             Divider()
 
@@ -60,7 +93,7 @@ struct MenuBarPopoverView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
-                if recentNotes.prefix(5).isEmpty {
+                if recentNotes.prefix(50).isEmpty {
                     Text("No dictations yet")
                         .font(.body)
                         .foregroundStyle(.tertiary)
@@ -68,7 +101,7 @@ struct MenuBarPopoverView: View {
                 } else {
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 6) {
-                            ForEach(recentNotes.prefix(5)) { note in
+                            ForEach(recentNotes.prefix(50)) { note in
                                 RecentDictationRow(note: note)
                             }
                         }
@@ -96,6 +129,18 @@ struct MenuBarPopoverView: View {
             .padding(.vertical, 8)
         }
         .frame(width: 340, height: 480)
+    }
+
+    private func saveQuickNote() {
+        let text = quickNoteText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+
+        let note = Note(bodyMarkdown: text)
+        modelContext.insert(note)
+        try? modelContext.save()
+
+        quickNoteText = ""
+        showQuickNote = false
     }
 
     private func openSettings() {

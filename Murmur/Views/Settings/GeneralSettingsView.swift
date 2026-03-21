@@ -6,7 +6,6 @@ struct GeneralSettingsView: View {
     @AppStorage("triggerKey") private var triggerKey = "fn"
     @AppStorage("toggleMaxDuration") private var toggleMaxDuration = 300
     @AppStorage("appearance") private var appearance = "system"
-    @AppStorage("clinicalMode") private var clinicalMode = true
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
 
     var body: some View {
@@ -63,8 +62,12 @@ struct GeneralSettingsView: View {
             }
 
             Section("Privacy") {
-                Toggle("Clinical Mode", isOn: $clinicalMode)
-                Text("When enabled, all cloud AI providers are disabled. Only on-device processing is used.")
+                HStack {
+                    Image(systemName: "lock.shield.fill")
+                        .foregroundStyle(.green)
+                    Text("All processing is on-device")
+                }
+                Text("Murmur never sends your voice or text to any server. Speech recognition, notes, and personal dictionary all stay on your Mac.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

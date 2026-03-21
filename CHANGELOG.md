@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.2.0] - 2026-03-21
+
+### Added
+- **Session recovery** — in-progress dictations are saved every 10 seconds (AES-256-GCM encrypted, Keychain-backed key). On relaunch after a crash, recovered text is automatically restored as a note.
+- **Export notes** — export any note as Markdown (.md), Plain Text (.txt), or PDF from the editor toolbar.
+- **Quick note from menu bar** — type and save a note directly from the menu bar popover without starting a dictation session.
+- **Microphone selection** — new Audio settings tab with a device picker and live level meter for testing.
+- **Whisper mode** — +12dB gain boost for quiet environments, toggled in Audio settings.
+- **Expanded session history** — menu bar popover now shows up to 50 recent dictations (was 5).
+- **SessionRecoveryTests** — 4 tests covering encoding/decoding, restore-as-note, no-file check, and periodic save lifecycle.
+
+### Changed
+- **Privacy hardening** — removed unused `com.apple.security.network.client` entitlement; redacted all transcription text from os.log (char counts only); removed clinical mode references throughout.
+- Menu bar popover shows "On-Device" privacy badge instead of clinical mode toggle.
+
+### Fixed
+- **Flaky TextInjectionTests** — replaced fixed sleeps with AX readiness polling (`waitForWritableElement`), added `.serialized` to prevent concurrent TextEdit launches, and added single-retry injection. Tests now pass reliably across 3+ consecutive runs.
+
 ## [0.1.8] - 2026-03-20
 
 ### Added
