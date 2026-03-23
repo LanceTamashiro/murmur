@@ -6,6 +6,7 @@ import SpeechEngine
 import Models
 import NoteStore
 import PersonalDictionary
+import AIEditor
 
 private let logger = Logger(subsystem: "com.unconventionalpsychotherapy.murmur", category: "DictationViewModel")
 
@@ -25,10 +26,20 @@ final class DictationViewModel {
     var amplitudes: [Float] = Array(repeating: 0.05, count: 20)
     var destinationLabel: String = "New Note"
 
+    /// The raw (pre-AI) text from the last dictation.
+    var rawText: String = ""
+    /// The AI-edited text from the last dictation (same as rawText if AI is disabled/unavailable).
+    var editedText: String = ""
+    /// Whether AI processing is currently in progress.
+    var isAIProcessing: Bool = false
+    /// Whether the HUD is showing raw text instead of edited text.
+    var showingRawText: Bool = false
+
     private var speechEngine: (any SpeechEngineProtocol)?
     private var textInjectionService: TextInjectionService?
     private var noteStore: NoteStoreService?
     private var personalDictionary: PersonalDictionaryService?
+    private var aiPipeline: EditingPipeline?
     private var currentSessionID: UUID?
     private(set) var sessionStartTime: Date?
     private var startupTask: Task<Void, Never>?
@@ -50,12 +61,14 @@ final class DictationViewModel {
         speechEngine: any SpeechEngineProtocol,
         textInjectionService: TextInjectionService,
         noteStore: NoteStoreService,
-        personalDictionary: PersonalDictionaryService? = nil
+        personalDictionary: PersonalDictionaryService? = nil,
+        aiPipeline: EditingPipeline? = nil
     ) {
         self.speechEngine = speechEngine
         self.textInjectionService = textInjectionService
         self.noteStore = noteStore
         self.personalDictionary = personalDictionary
+        self.aiPipeline = aiPipeline
     }
 
     func toggle() {
@@ -348,6 +361,10 @@ final class DictationViewModel {
         }
     }
 
+    private var aiEditingEnabled: Bool {
+        UserDefaults.standard.object(forKey: "aiEditingEnabled") as? Bool ?? true
+    }
+
     private func finalizeDictation(text: String, language: String, isEarlySnapshot: Bool = false) {
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             logger.info("finalizeDictation: empty text, resetting")
@@ -356,6 +373,10 @@ final class DictationViewModel {
         }
 
         logger.info("finalizeDictation: \(text.count) chars (language=\(language), early=\(isEarlySnapshot))")
+
+        // Track raw text
+        rawText = text
+        editedText = text
 
         // Save note synchronously (SwiftData, on MainActor) — ensures
         // earlyInjectionNoteID is set BEFORE any async work, eliminating the
@@ -368,38 +389,74 @@ final class DictationViewModel {
         }
 
         finalizationTask = Task {
-            // Try to inject into frontmost app's text field
-            if let injectionService = textInjectionService {
-                logger.info("finalizeDictation: attempting text injection...")
-                let result = await injectionService.inject(text: text)
-                logger.info("finalizeDictation: injection result = \(String(describing: result))")
-
-                if case .success(strategy: .clipboardCopy) = result {
-                    // Text was copied to clipboard but not auto-pasted (AX + CGEvent both failed).
-                    // Show a brief notification so the user knows to paste manually.
-                    liveTranscript = "Copied to clipboard — press ⌘V to paste"
-                    state = .completed
-                    try? await Task.sleep(for: .seconds(3.0))
-                    if !isEarlySnapshot || sessionHasEnded {
-                        resetState()
-                    }
-                    return
-                }
-            }
-
             if isEarlySnapshot {
-                // Don't reset here — .sessionEnded is the single authority for
-                // resetting state in the early-injection path. Just show completed.
+                // HOLD MODE: inject raw text immediately, run AI in background
+                await injectText(text)
                 state = .completed
                 liveTranscript = text
+
+                // Run AI in background if enabled
+                if aiEditingEnabled, let pipeline = aiPipeline {
+                    isAIProcessing = true
+                    let request = EditingRequest(text: text, language: language)
+                    let result = await pipeline.process(request)
+                    isAIProcessing = false
+
+                    if result.wasModified {
+                        editedText = result.processedText
+                        liveTranscript = result.processedText
+                        logger.info("finalizeDictation: AI edited text (\(text.count) → \(result.processedText.count) chars)")
+                        // Update note with AI-edited text
+                        if let nid = noteID {
+                            try? noteStore?.updateNote(nid, bodyMarkdown: result.processedText)
+                        }
+                    }
+                }
             } else {
-                // Non-early path: this finalizeDictation owns the full lifecycle.
+                // TOGGLE MODE: run AI pipeline before injection
+                var textToInject = text
+
+                if aiEditingEnabled, let pipeline = aiPipeline {
+                    isAIProcessing = true
+                    let request = EditingRequest(text: text, language: language)
+                    let result = await pipeline.process(request)
+                    isAIProcessing = false
+
+                    if result.wasModified {
+                        textToInject = result.processedText
+                        editedText = result.processedText
+                        logger.info("finalizeDictation: AI edited text (\(text.count) → \(result.processedText.count) chars)")
+                        // Update note with AI-edited text
+                        if let nid = noteID {
+                            try? noteStore?.updateNote(nid, bodyMarkdown: result.processedText)
+                        }
+                    }
+                }
+
+                await injectText(textToInject)
+
                 state = .completed
-                liveTranscript = text
+                liveTranscript = textToInject
                 try? await Task.sleep(for: .seconds(2.0))
                 resetState()
             }
         }
+    }
+
+    /// Inject text into the frontmost app. Returns true if injection required clipboard-only fallback.
+    private func injectText(_ text: String) async -> Bool {
+        guard let injectionService = textInjectionService else { return false }
+        logger.info("finalizeDictation: attempting text injection...")
+        let result = await injectionService.inject(text: text)
+        logger.info("finalizeDictation: injection result = \(String(describing: result))")
+
+        if case .success(strategy: .clipboardCopy) = result {
+            liveTranscript = "Copied to clipboard — press ⌘V to paste"
+            state = .completed
+            try? await Task.sleep(for: .seconds(3.0))
+            return true
+        }
+        return false
     }
 
     @discardableResult
@@ -476,6 +533,10 @@ final class DictationViewModel {
         finalizedSegments = []
         earlyInjectionNoteID = nil
         earlyInjectionText = nil
+        rawText = ""
+        editedText = ""
+        isAIProcessing = false
+        showingRawText = false
         postAccessibilityAnnouncement("Dictation ended")
     }
 

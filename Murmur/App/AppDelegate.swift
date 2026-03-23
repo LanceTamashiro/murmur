@@ -5,6 +5,7 @@ import Models
 import NoteStore
 import SpeechEngine
 import PersonalDictionary
+import AIEditor
 import os.log
 
 private let logger = Logger(subsystem: "com.unconventionalpsychotherapy.murmur", category: "AppDelegate")
@@ -39,12 +40,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let noteStore = NoteStoreService(modelContainer: modelContainer)
         let personalDictionary = PersonalDictionaryService(modelContainer: modelContainer)
 
+        // Build AI editing pipeline
+        let aiPipeline = buildAIPipeline()
+
         // Configure dictation view model
         dictationViewModel.configure(
             speechEngine: speechEngine,
             textInjectionService: injectionService,
             noteStore: noteStore,
-            personalDictionary: personalDictionary
+            personalDictionary: personalDictionary,
+            aiPipeline: aiPipeline
         )
 
         // Re-verify mic + speech permissions on every launch — they may have been
@@ -189,6 +194,45 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let window = NSApp.windows.first(where: { !($0 is NSPanel) }) {
             window.makeKeyAndOrderFront(nil)
         }
+    }
+
+    // MARK: - AI Pipeline Construction
+
+    private func buildAIPipeline() -> EditingPipeline {
+        let keychain = KeychainService()
+        var providers: [any AIEditingProvider] = []
+
+        // OpenAI provider
+        if let openAIKey = keychain.load(for: "openai"), !openAIKey.isEmpty {
+            let model = UserDefaults.standard.string(forKey: "openaiModel") ?? "gpt-4o"
+            providers.append(OpenAIProvider(apiKey: openAIKey, model: model))
+            logger.info("buildAIPipeline: OpenAI provider configured (model=\(model))")
+        }
+
+        // Claude provider
+        if let claudeKey = keychain.load(for: "claude"), !claudeKey.isEmpty {
+            let model = UserDefaults.standard.string(forKey: "claudeModel") ?? "claude-sonnet-4-5-20241022"
+            providers.append(ClaudeProvider(apiKey: claudeKey, model: model))
+            logger.info("buildAIPipeline: Claude provider configured (model=\(model))")
+        }
+
+        // Apple Intelligence provider (on-device, no API key needed)
+        #if canImport(FoundationModels)
+        if #available(macOS 26.0, *) {
+            providers.append(AppleIntelligenceProvider())
+            logger.info("buildAIPipeline: Apple Intelligence provider available")
+        }
+        #endif
+
+        let provider: (any AIEditingProvider)?
+        if providers.count > 1 {
+            provider = FallbackChain(providers: providers)
+            logger.info("buildAIPipeline: fallback chain with \(providers.count) providers")
+        } else {
+            provider = providers.first
+        }
+
+        return EditingPipeline(provider: provider)
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {

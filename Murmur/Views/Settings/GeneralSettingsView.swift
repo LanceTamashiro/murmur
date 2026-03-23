@@ -65,9 +65,9 @@ struct GeneralSettingsView: View {
                 HStack {
                     Image(systemName: "lock.shield.fill")
                         .foregroundStyle(.green)
-                    Text("All processing is on-device")
+                    Text("Speech recognition is always on-device")
                 }
-                Text("Murmur never sends your voice or text to any server. Speech recognition, notes, and personal dictionary all stay on your Mac.")
+                Text("Voice audio and notes never leave your Mac. If you enable AI editing with a cloud provider (OpenAI or Claude), only the transcribed text is sent to polish grammar and tone. Configure providers in the AI Editing tab.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

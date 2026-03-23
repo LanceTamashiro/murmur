@@ -5,6 +5,7 @@ import AVFoundation
 @testable import SpeechEngine
 @testable import NoteStore
 @testable import Models
+@testable import AIEditor
 import SwiftData
 
 // MARK: - Race Condition Regression Tests
@@ -371,6 +372,40 @@ struct EarlyInjectionTests {
         try await Task.sleep(for: .milliseconds(200))
     }
 
+    @Test func earlyInjectionResetsToIdleAfterSessionEnds() async throws {
+        let engine = MockSpeechEngine()
+        engine.mockAuthorizationResult = .authorized
+        engine.stopSessionDelay = .milliseconds(500)
+        engine.mockTranscriptionText = "Hello world."
+
+        let (vm, _, _) = try EarlyInjectionTests.makeViewModel(engine: engine)
+
+        vm.startDictation()
+        try await Task.sleep(for: .milliseconds(200))
+
+        // Simulate a finalized sentence during recording
+        engine.simulateFinalResult("Hello world.")
+        try await Task.sleep(for: .milliseconds(50))
+
+        // Stop — triggers early injection path
+        vm.stopAndInject()
+        #expect(vm.state == .processing)
+
+        // Wait for stopSession + sessionEnded + completed display + resetState
+        // (500ms stop delay + 2s completed display + margin)
+        try await Task.sleep(for: .seconds(4))
+
+        // State MUST be idle — this is the regression test for the stuck-state bug
+        #expect(vm.state == .idle, "State should reset to .idle after early injection + sessionEnded, got \(vm.state)")
+
+        // Verify we can start a new recording
+        vm.startDictation()
+        #expect(vm.state == .recording)
+
+        vm.cancel()
+        try await Task.sleep(for: .milliseconds(200))
+    }
+
     @Test func earlyInjectionDoesNotDoubleInject() async throws {
         let engine = MockSpeechEngine()
         engine.mockAuthorizationResult = .authorized
@@ -619,5 +654,184 @@ struct MockSpeechEngineRaceTests {
         // Status may be .authorized (if delay completed) or .notDetermined (if cancelled early)
         // Either way, no crash
         #expect(status == .authorized || status == .notDetermined)
+    }
+}
+
+// MARK: - AI Pipeline Integration Tests
+
+@MainActor
+@Suite("AI Pipeline Integration Tests", .serialized)
+struct AIPipelineIntegrationTests {
+
+    private static func makeViewModel(
+        engine: MockSpeechEngine,
+        aiProvider: (any AIEditingProvider)? = nil
+    ) throws -> (DictationViewModel, MockSpeechEngine, NoteStoreService) {
+        let schema = Schema(SchemaV1.models)
+        let config = ModelConfiguration(isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [config])
+        let noteStore = NoteStoreService(modelContainer: container)
+
+        let appContextDetector = AppContextDetector()
+        let injectionService = TextInjectionService(appContextDetector: appContextDetector)
+
+        let pipeline = EditingPipeline(provider: aiProvider)
+
+        let vm = DictationViewModel()
+        vm.configure(
+            speechEngine: engine,
+            textInjectionService: injectionService,
+            noteStore: noteStore,
+            aiPipeline: pipeline
+        )
+        return (vm, engine, noteStore)
+    }
+
+    @Test("Toggle mode: AI pipeline processes text before injection")
+    func toggleModeAIProcessing() async throws {
+        let engine = MockSpeechEngine()
+        engine.mockAuthorizationResult = .authorized
+        engine.mockTranscriptionText = "um hello world"
+
+        let mock = MockAIEditingProvider(transform: { $0.uppercased() })
+        let (vm, _, noteStore) = try AIPipelineIntegrationTests.makeViewModel(
+            engine: engine, aiProvider: mock
+        )
+
+        vm.startDictation()
+        try await Task.sleep(for: .milliseconds(200))
+
+        // Simulate session ending with text (no early injection)
+        // The sessionEnded handler will call finalizeDictation with isEarlySnapshot=false
+
+        // Wait for session end
+        engine.simulateFinalResult("um hello world")
+        try await Task.sleep(for: .milliseconds(50))
+
+        // Don't emit any partial results, just stop
+        await engine.stopSession()
+        try await Task.sleep(for: .seconds(1))
+
+        // The AI provider should have been called
+        #expect(mock.processCount >= 1)
+
+        // The edited text should reflect AI processing
+        // (filler removal + AI uppercasing)
+        #expect(vm.editedText == "HELLO WORLD")
+
+        vm.cancel()
+        try await Task.sleep(for: .milliseconds(200))
+    }
+
+    @Test("AI disabled: raw text passes through unchanged")
+    func aiDisabledPassthrough() async throws {
+        let engine = MockSpeechEngine()
+        engine.mockAuthorizationResult = .authorized
+        engine.mockTranscriptionText = "um hello world"
+
+        let mock = MockAIEditingProvider(transform: { $0.uppercased() })
+        let (vm, _, _) = try AIPipelineIntegrationTests.makeViewModel(
+            engine: engine, aiProvider: mock
+        )
+
+        // Disable AI editing
+        UserDefaults.standard.set(false, forKey: "aiEditingEnabled")
+        defer { UserDefaults.standard.removeObject(forKey: "aiEditingEnabled") }
+
+        vm.startDictation()
+        try await Task.sleep(for: .milliseconds(200))
+
+        engine.simulateFinalResult("um hello world")
+        try await Task.sleep(for: .milliseconds(50))
+
+        await engine.stopSession()
+        try await Task.sleep(for: .seconds(1))
+
+        // AI provider should NOT have been called
+        #expect(mock.processCount == 0)
+
+        vm.cancel()
+        try await Task.sleep(for: .milliseconds(200))
+    }
+
+    @Test("AI pipeline failure: pre-processed text used as fallback")
+    func aiFailureFallback() async throws {
+        let engine = MockSpeechEngine()
+        engine.mockAuthorizationResult = .authorized
+        engine.mockTranscriptionText = "um hello world"
+
+        let mock = MockAIEditingProvider(shouldFail: true)
+        let (vm, _, _) = try AIPipelineIntegrationTests.makeViewModel(
+            engine: engine, aiProvider: mock
+        )
+
+        vm.startDictation()
+        try await Task.sleep(for: .milliseconds(200))
+
+        engine.simulateFinalResult("um hello world")
+        try await Task.sleep(for: .milliseconds(50))
+
+        await engine.stopSession()
+        try await Task.sleep(for: .seconds(1))
+
+        // Filler words should still be removed (pre-processing)
+        // but AI uppercase should NOT be applied (provider failed)
+        #expect(vm.editedText == "hello world")
+
+        vm.cancel()
+        try await Task.sleep(for: .milliseconds(200))
+    }
+
+    @Test("No AI provider: only pre-processing applies")
+    func noProviderPreProcessingOnly() async throws {
+        let engine = MockSpeechEngine()
+        engine.mockAuthorizationResult = .authorized
+        engine.mockTranscriptionText = "um hello world"
+
+        let (vm, _, _) = try AIPipelineIntegrationTests.makeViewModel(engine: engine)
+
+        vm.startDictation()
+        try await Task.sleep(for: .milliseconds(200))
+
+        engine.simulateFinalResult("um hello world")
+        try await Task.sleep(for: .milliseconds(50))
+
+        await engine.stopSession()
+        try await Task.sleep(for: .seconds(1))
+
+        // Only filler removal should apply
+        #expect(vm.editedText == "hello world")
+
+        vm.cancel()
+        try await Task.sleep(for: .milliseconds(200))
+    }
+
+    @Test("rawText and editedText properties reflect correct values")
+    func rawAndEditedTextProperties() async throws {
+        let engine = MockSpeechEngine()
+        engine.mockAuthorizationResult = .authorized
+        engine.mockTranscriptionText = "um hello world"
+
+        let mock = MockAIEditingProvider(transform: { $0.uppercased() })
+        let (vm, _, _) = try AIPipelineIntegrationTests.makeViewModel(
+            engine: engine, aiProvider: mock
+        )
+
+        vm.startDictation()
+        try await Task.sleep(for: .milliseconds(200))
+
+        engine.simulateFinalResult("um hello world")
+        try await Task.sleep(for: .milliseconds(50))
+
+        await engine.stopSession()
+        try await Task.sleep(for: .seconds(1))
+
+        // rawText should be the original transcription
+        #expect(vm.rawText == "um hello world")
+        // editedText should be the AI-processed version
+        #expect(vm.editedText == "HELLO WORLD")
+
+        vm.cancel()
+        try await Task.sleep(for: .milliseconds(200))
     }
 }

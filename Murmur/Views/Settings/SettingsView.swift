@@ -15,6 +15,10 @@ struct SettingsView: View {
                 .tabItem {
                     Label("Dictionary", systemImage: "character.book.closed")
                 }
+            AIEditingSettingsView()
+                .tabItem {
+                    Label("AI Editing", systemImage: "wand.and.stars")
+                }
             AboutSettingsView()
                 .tabItem {
                     Label("About", systemImage: "info.circle")

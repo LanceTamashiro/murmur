@@ -91,20 +91,56 @@ struct FlowBarRecordingView: View {
 struct FlowBarCompletedView: View {
     @Environment(DictationViewModel.self) private var viewModel
 
+    private var displayText: String {
+        if viewModel.showingRawText {
+            return String(viewModel.rawText.prefix(60))
+        } else {
+            return String(viewModel.liveTranscript.prefix(60))
+        }
+    }
+
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 14))
-                .foregroundStyle(.green)
+            if viewModel.isAIProcessing {
+                ProgressView()
+                    .controlSize(.small)
+                    .tint(.white)
+            } else {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 14))
+                    .foregroundStyle(.green)
+            }
 
-            Text(viewModel.liveTranscript.prefix(60))
+            Text(displayText)
                 .font(.caption)
                 .foregroundStyle(.white.opacity(0.9))
                 .lineLimit(1)
 
-            Text("Saved")
-                .font(.caption2)
-                .foregroundStyle(.white.opacity(0.5))
+            if viewModel.isAIProcessing {
+                Text("Processing...")
+                    .font(.caption2)
+                    .foregroundStyle(.white.opacity(0.5))
+            } else {
+                Text("Saved")
+                    .font(.caption2)
+                    .foregroundStyle(.white.opacity(0.5))
+            }
+
+            // Raw/Edited toggle (visible when AI produced different output)
+            if !viewModel.isAIProcessing && viewModel.rawText != viewModel.editedText && !viewModel.editedText.isEmpty {
+                Button {
+                    viewModel.showingRawText.toggle()
+                } label: {
+                    Image(systemName: viewModel.showingRawText ? "text.badge.checkmark" : "text.badge.minus")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.white.opacity(0.6))
+                        .frame(width: 24, height: 24)
+                        .background(.white.opacity(0.1))
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(viewModel.showingRawText ? "Show edited text" : "Show raw text")
+            }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
@@ -113,7 +149,7 @@ struct FlowBarCompletedView: View {
                 .fill(.black.opacity(0.85))
                 .shadow(color: .black.opacity(0.3), radius: 10, y: 4)
         }
-        .accessibilityLabel("Dictation saved: \(viewModel.liveTranscript.prefix(60))")
+        .accessibilityLabel("Dictation saved: \(displayText)")
     }
 }
 

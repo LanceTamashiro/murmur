@@ -78,12 +78,16 @@ xcodegen generate
 | Session recovery | `Murmur/Services/SessionRecoveryManager.swift` |
 | Note exporter | `Murmur/Services/NoteExporter.swift` |
 | Audio settings | `Murmur/Views/Settings/AudioSettingsView.swift` |
+| AI editing pipeline | `Packages/MurmurCore/Sources/AIEditor/` |
+| AI editing settings | `Murmur/Views/Settings/AIEditingSettingsView.swift` |
+| Keychain service | `Murmur/Services/KeychainService.swift` |
+| Markdown preview | `Murmur/Views/Editor/MarkdownPreviewView.swift` |
 | Full spec | `requirements-spec.md` |
 | Plan | `.claude/plans/reactive-imagining-kurzweil.md` |
 
 ## Testing
 
-- 96+ tests across 13 suites: NoteStoreService, PersonalDictionaryService, MockSpeechEngine, OnboardingPermissionCoordinator, ThreadingSafety (MurmurCore: 64), plus DictationViewModelRace, EarlyInjection, TextInjection, MockSpeechEngineRace, AppDelegateSetup, TriggerKey, ToggleMaxDuration, SessionRecovery (MurmurTests: 32+)
+- 200+ tests across 26 suites: NoteStoreService, PersonalDictionaryService, MockSpeechEngine, OnboardingPermissionCoordinator, ThreadingSafety, AIEditorTypes, EditingPipeline, CommandMode, FillerWord, Backtrack, FallbackChain, ClaudeProvider, OpenAIProvider, ProviderSystemPrompt (MurmurCore: 189), plus DictationViewModelRace, EarlyInjection, TextInjection, MockSpeechEngineRace, AppDelegateSetup, TriggerKey, ToggleMaxDuration, SessionRecovery, KeychainService, AIPipelineIntegration, MenuBarPopover (MurmurTests: 12 suites)
 - All tests use in-memory `ModelContainer`, `MockSpeechEngine`, or `BackgroundCallbackPermissionProvider`
 - Tests cover: CRUD, search, trash/restore, auth flows, mic permission, session lifecycle, event streaming, error types, threading safety, onboarding permission flow, race conditions, early injection (snapshot text, tail text update, empty snapshot fallback, no double injection), text injection into TextEdit, TriggerKey enum validation, toggle/cancel state management, session recovery (encode/decode, restore, periodic save)
 - TextInjection tests launch TextEdit, inject text via AX API, and verify it arrived — require accessibility permission (skip if not granted). Tests use `.serialized` and AX readiness polling for reliability.

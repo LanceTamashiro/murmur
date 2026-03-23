@@ -13,6 +13,7 @@ let package = Package(
         .library(name: "SpeechEngine", targets: ["SpeechEngine"]),
         .library(name: "PersonalDictionary", targets: ["PersonalDictionary"]),
         .library(name: "TextInjection", targets: ["TextInjection"]),
+        .library(name: "AIEditor", targets: ["AIEditor"]),
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-async-algorithms.git", from: "1.0.0"),
@@ -45,9 +46,14 @@ let package = Package(
             dependencies: [],
             path: "Sources/TextInjection"
         ),
+        .target(
+            name: "AIEditor",
+            dependencies: [],
+            path: "Sources/AIEditor"
+        ),
         .testTarget(
             name: "MurmurCoreTests",
-            dependencies: ["Models", "NoteStore", "SpeechEngine", "PersonalDictionary", "TextInjection"],
+            dependencies: ["Models", "NoteStore", "SpeechEngine", "PersonalDictionary", "TextInjection", "AIEditor"],
             path: "Tests/MurmurCoreTests"
         ),
     ]

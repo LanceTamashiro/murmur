@@ -3,14 +3,28 @@ import Models
 
 struct NoteEditorView: View {
     @Bindable var note: Note
+    @AppStorage("editorMode") private var editorMode = "source"
 
     var body: some View {
         VStack(spacing: 0) {
-            TextEditor(text: $note.bodyMarkdown)
-                .font(.body)
-                .padding(.horizontal, 12)
-                .padding(.top, 12)
-                .scrollContentBackground(.hidden)
+            if editorMode == "split" {
+                HSplitView {
+                    TextEditor(text: $note.bodyMarkdown)
+                        .font(.body)
+                        .padding(.horizontal, 12)
+                        .padding(.top, 12)
+                        .scrollContentBackground(.hidden)
+
+                    MarkdownPreviewView(markdown: note.bodyMarkdown)
+                        .frame(minWidth: 200)
+                }
+            } else {
+                TextEditor(text: $note.bodyMarkdown)
+                    .font(.body)
+                    .padding(.horizontal, 12)
+                    .padding(.top, 12)
+                    .scrollContentBackground(.hidden)
+            }
 
             EditorToolbar(note: note)
         }

@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.3.0] - 2026-03-23
+
+### Added
+- **AI editing pipeline** — optional AI-powered text cleanup via Claude or OpenAI providers (filler word removal, backtrack correction, command mode, and AI rewriting). Configurable per-provider in new AI Editing settings tab.
+- **Keychain-backed API key storage** — provider API keys stored securely in macOS Keychain, never in UserDefaults.
+- **Markdown preview** — split-view editor mode with live markdown rendering alongside the source text.
+- **Note preview in menu bar** — tap any recent dictation to see the full note text, copy it, or trash it without opening the Notes Library.
+- **Quick-copy button** — each menu bar row has a copy icon for one-tap clipboard access with visual "Copied!" feedback.
+- **MenuBarPopoverTests** — 12 tests covering relative time formatting and app name resolution helpers.
+
+### Changed
+- **Stable timestamps in menu bar** — replaced constantly-updating relative times ("5 min, 59 sec") with static labels ("3 min ago", "Yesterday", "Mar 20") that don't cause visual jitter.
+- **Friendly source app names** — menu bar rows now show "Claude" instead of "com.anthropic.claudefordesktop" by resolving bundle IDs via NSWorkspace.
+- **Menu bar navigation** — tapping a dictation row now pushes a detail view (via NavigationStack) instead of silently copying text.
+
 ## [0.2.0] - 2026-03-21
 
 ### Added

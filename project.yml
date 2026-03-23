@@ -50,6 +50,8 @@ targets:
         product: PersonalDictionary
       - package: MurmurCore
         product: TextInjection
+      - package: MurmurCore
+        product: AIEditor
       - package: swift-async-algorithms
         product: AsyncAlgorithms
     settings:
@@ -91,6 +93,8 @@ targets:
         product: PersonalDictionary
       - package: MurmurCore
         product: TextInjection
+      - package: MurmurCore
+        product: AIEditor
     settings:
       base:
         GENERATE_INFOPLIST_FILE: true

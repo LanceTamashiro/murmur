@@ -5,6 +5,7 @@ import Models
 struct EditorToolbar: View {
     let note: Note
     @State private var showCopied = false
+    @AppStorage("editorMode") private var editorMode = "source"
 
     var body: some View {
         HStack {
@@ -17,6 +18,13 @@ struct EditorToolbar: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Spacer()
+
+            Picker("View", selection: $editorMode) {
+                Image(systemName: "doc.plaintext").tag("source")
+                Image(systemName: "rectangle.split.2x1").tag("split")
+            }
+            .pickerStyle(.segmented)
+            .fixedSize()
 
             Menu {
                 ForEach(ExportFormat.allCases, id: \.rawValue) { format in

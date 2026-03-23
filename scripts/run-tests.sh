@@ -32,6 +32,11 @@ SUITES=(
     "MockSpeechEngineRaceTests"
     "TextInjectionTests"
     "SessionRecoveryTests"
+    "TriggerKeyTests"
+    "ToggleMaxDurationTests"
+    "KeychainServiceTests"
+    "AIPipelineIntegrationTests"
+    "MenuBarPopoverTests"
 )
 
 record_result() {
