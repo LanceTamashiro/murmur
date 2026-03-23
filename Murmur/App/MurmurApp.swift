@@ -10,13 +10,19 @@ struct MurmurApp: App {
 
     let modelContainer: ModelContainer
 
+    /// True when running as a test host — detected via XCTest class presence or environment.
+    private static var isTestEnvironment: Bool {
+        ProcessInfo.processInfo.environment["XCTestBundlePath"] != nil
+            || NSClassFromString("XCTest") != nil
+    }
+
     init() {
         do {
             let schema = Schema(SchemaV1.models)
             let configuration = ModelConfiguration(
                 "Murmur",
                 schema: schema,
-                isStoredInMemoryOnly: false
+                isStoredInMemoryOnly: MurmurApp.isTestEnvironment
             )
             modelContainer = try ModelContainer(
                 for: schema,

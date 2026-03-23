@@ -218,7 +218,7 @@ struct FlowBarIdleView: View {
                 isHovering = hovering
             }
         }
-        .accessibilityLabel("Murmur — press Command Shift Space to dictate")
+        .accessibilityLabel("Murmur — \(triggerHint) or press Command Shift Space to dictate")
     }
 }
 

@@ -2,6 +2,9 @@ import SwiftUI
 import SwiftData
 import AppKit
 import Models
+import os.log
+
+private let logger = Logger(subsystem: "com.unconventionalpsychotherapy.murmur", category: "MenuBarPopover")
 
 struct MenuBarPopoverView: View {
     var onStartDictating: () -> Void = {}
@@ -146,7 +149,11 @@ struct MenuBarPopoverView: View {
 
         let note = Note(bodyMarkdown: text)
         modelContext.insert(note)
-        try? modelContext.save()
+        do {
+            try modelContext.save()
+        } catch {
+            logger.error("Failed to save quick note: \(error)")
+        }
 
         quickNoteText = ""
         showQuickNote = false
@@ -260,7 +267,11 @@ private struct NotePreviewView: View {
     private func trashNote() {
         note.isTrashed = true
         note.trashedAt = Date()
-        try? modelContext.save()
+        do {
+            try modelContext.save()
+        } catch {
+            logger.error("Failed to save trashed note: \(error)")
+        }
         dismiss()
     }
 }
@@ -334,7 +345,7 @@ func relativeTimeString(_ date: Date) -> String {
         return "Just now"
     } else if interval < 3600 {
         let minutes = Int(interval / 60)
-        return "\(minutes) min ago"
+        return minutes == 1 ? "1 min ago" : "\(minutes) mins ago"
     } else if interval < 86400 {
         let hours = Int(interval / 3600)
         return hours == 1 ? "1 hour ago" : "\(hours) hours ago"

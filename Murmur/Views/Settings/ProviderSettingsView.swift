@@ -7,7 +7,7 @@ struct ProviderSettingsView: View {
     @State private var openAIKey: String = ""
     @State private var claudeKey: String = ""
     @AppStorage("openaiModel") private var openAIModel = "gpt-4o"
-    @AppStorage("claudeModel") private var claudeModel = "claude-sonnet-4-5-20241022"
+    @AppStorage("claudeModel") private var claudeModel = "claude-sonnet-4-6-20250514"
 
     @State private var openAIStatus: ProviderStatus = .unconfigured
     @State private var claudeStatus: ProviderStatus = .unconfigured
@@ -81,7 +81,7 @@ struct ProviderSettingsView: View {
                     }
 
                 Picker("Model", selection: $claudeModel) {
-                    Text("Claude Sonnet 4.5").tag("claude-sonnet-4-5-20241022")
+                    Text("Claude Sonnet 4.6").tag("claude-sonnet-4-6-20250514")
                     Text("Claude Haiku 4.5").tag("claude-haiku-4-5-20251001")
                 }
 

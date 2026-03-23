@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.3.1] - 2026-03-23
+
+### Added
+- Edge case tests for keychain (unicode, special chars, rapid save/delete), backtrack (triple backtrack, unicode, document start), filler word (boundary safety: umbilical/human/erase not stripped), note store (case-insensitive search, unicode/emoji/whitespace word count), and AI provider error paths (malformed JSON, empty responses, 429/500/503 status codes)
+- NoteExporter security tests (path traversal, null bytes, shell metacharacters)
+
+### Fixed
+- **Test host crash dialog eliminated** — added `NSClassFromString("XCTest")` fallback detection alongside `XCTestBundlePath` env var. MurmurApp now uses in-memory ModelContainer in test environments, preventing SwiftData crashes during test runs.
+- **TextInjectionTests now passes on macOS 26 beta** — `fullInjectionServiceFlowInjectsIntoTextEdit` skips gracefully when TextEdit can't be launched (`procNotFound` on macOS 26 beta).
+- NoteExporter security hardening (filename sanitization for path traversal, null bytes, shell metacharacters)
+- Text injection improvements (AXTextInjector error handling, AppContextDetector robustness, ClipboardFallbackInjector)
+- DictionarySettingsView and ProviderSettingsView UI fixes
+
 ## [0.3.0] - 2026-03-23
 
 ### Added

@@ -35,6 +35,11 @@ final class ClipboardFallbackInjector {
     }
 
     private func simulatePaste() -> Bool {
+        // CGEvent.post silently drops events without accessibility permission
+        guard AXIsProcessTrusted() else {
+            return false
+        }
+
         let source = CGEventSource(stateID: .privateState)
 
         guard let keyDown = CGEvent(keyboardEventSource: source, virtualKey: 0x09, keyDown: true),

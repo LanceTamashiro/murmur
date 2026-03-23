@@ -64,9 +64,9 @@ struct NoteExporter {
         picker.show(relativeTo: view.bounds, of: view, preferredEdge: .minY)
     }
 
-    // MARK: - Private
+    // MARK: - Internal (for testing)
 
-    private static func sanitizedFilename(for note: Note) -> String {
+    static func sanitizedFilename(for note: Note) -> String {
         let title = note.title
         let cleaned = title.components(separatedBy: CharacterSet.alphanumerics.inverted)
             .joined(separator: "-")
@@ -74,7 +74,7 @@ struct NoteExporter {
         return cleaned.isEmpty ? "note" : String(cleaned.prefix(50))
     }
 
-    private static func stripMarkdown(_ text: String) -> String {
+    static func stripMarkdown(_ text: String) -> String {
         var result = text
         // Remove headers
         result = result.replacingOccurrences(of: "#{1,6}\\s+", with: "", options: .regularExpression)
@@ -87,7 +87,7 @@ struct NoteExporter {
         return result
     }
 
-    private static func renderPDF(text: String, title: String) -> Data {
+    static func renderPDF(text: String, title: String) -> Data {
         let pageWidth: CGFloat = 612 // US Letter
         let pageHeight: CGFloat = 792
         let margin: CGFloat = 72 // 1 inch
@@ -114,7 +114,9 @@ struct NoteExporter {
         let pdfData = NSMutableData()
         var mediaBox = CGRect(x: 0, y: 0, width: pageWidth, height: pageHeight)
 
-        guard let context = CGContext(consumer: CGDataConsumer(data: pdfData)!, mediaBox: &mediaBox, nil) else {
+        guard let consumer = CGDataConsumer(data: pdfData),
+              let context = CGContext(consumer: consumer, mediaBox: &mediaBox, nil) else {
+            logger.error("Failed to create PDF context")
             return Data()
         }
 
@@ -125,6 +127,7 @@ struct NoteExporter {
 
         var pageOrigin = CGPoint.zero
         var done = false
+        let maxPages = 100
 
         while !done {
             let textContainer = NSTextContainer(size: textRect.size)
@@ -157,6 +160,12 @@ struct NoteExporter {
             let lastGlyph = NSMaxRange(glyphRange)
             if lastGlyph >= layoutManager.numberOfGlyphs {
                 done = true
+            }
+
+            // Safety: prevent infinite loop on malformed text
+            if layoutManager.textContainers.count >= maxPages {
+                logger.warning("PDF export hit \(maxPages)-page limit, truncating")
+                break
             }
         }
 

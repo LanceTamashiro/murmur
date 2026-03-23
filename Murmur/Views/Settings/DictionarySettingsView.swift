@@ -1,6 +1,9 @@
 import SwiftUI
 import SwiftData
 import Models
+import os.log
+
+private let logger = Logger(subsystem: "com.unconventionalpsychotherapy.murmur", category: "DictionarySettings")
 
 struct DictionarySettingsView: View {
     @Query(sort: \DictionaryEntry.canonicalForm)
@@ -52,18 +55,18 @@ struct DictionarySettingsView: View {
                                 Button("Edit") { editingEntry = entry }
                                 Button(entry.isSuppressed ? "Enable" : "Suppress") {
                                     entry.isSuppressed.toggle()
-                                    try? modelContext.save()
+                                    do { try modelContext.save() } catch { logger.error("Dictionary save failed: \(error)") }
                                 }
                                 Divider()
                                 Button("Delete", role: .destructive) {
                                     modelContext.delete(entry)
-                                    try? modelContext.save()
+                                    do { try modelContext.save() } catch { logger.error("Dictionary save failed: \(error)") }
                                 }
                             }
                             .swipeActions(edge: .trailing) {
                                 Button(role: .destructive) {
                                     modelContext.delete(entry)
-                                    try? modelContext.save()
+                                    do { try modelContext.save() } catch { logger.error("Dictionary save failed: \(error)") }
                                 } label: {
                                     Label("Delete", systemImage: "trash")
                                 }
@@ -71,7 +74,7 @@ struct DictionarySettingsView: View {
                             .swipeActions(edge: .leading) {
                                 Button {
                                     entry.isSuppressed.toggle()
-                                    try? modelContext.save()
+                                    do { try modelContext.save() } catch { logger.error("Dictionary save failed: \(error)") }
                                 } label: {
                                     Label(
                                         entry.isSuppressed ? "Enable" : "Suppress",
@@ -91,12 +94,12 @@ struct DictionarySettingsView: View {
         .sheet(isPresented: $showingAddSheet) {
             DictionaryEntryFormView { newEntry in
                 modelContext.insert(newEntry)
-                try? modelContext.save()
+                do { try modelContext.save() } catch { logger.error("Dictionary save failed: \(error)") }
             }
         }
         .sheet(item: $editingEntry) { entry in
             DictionaryEntryFormView(entry: entry) { _ in
-                try? modelContext.save()
+                do { try modelContext.save() } catch { logger.error("Dictionary save failed: \(error)") }
             }
         }
     }

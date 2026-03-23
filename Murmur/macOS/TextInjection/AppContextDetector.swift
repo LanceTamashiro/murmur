@@ -7,6 +7,7 @@ final class AppContextDetector: ObservableObject {
 
     private var contextContinuation: AsyncStream<AppContext?>.Continuation?
     let appContextChanges: AsyncStream<AppContext?>
+    private var observerToken: NSObjectProtocol?
 
     init() {
         var cont: AsyncStream<AppContext?>.Continuation?
@@ -15,7 +16,7 @@ final class AppContextDetector: ObservableObject {
 
         updateContext()
 
-        NSWorkspace.shared.notificationCenter.addObserver(
+        observerToken = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification,
             object: nil,
             queue: .main
@@ -24,6 +25,15 @@ final class AppContextDetector: ObservableObject {
             Task { @MainActor in
                 self.updateContext()
             }
+        }
+    }
+
+    deinit {
+        MainActor.assumeIsolated {
+            if let token = observerToken {
+                NSWorkspace.shared.notificationCenter.removeObserver(token)
+            }
+            contextContinuation?.finish()
         }
     }
 

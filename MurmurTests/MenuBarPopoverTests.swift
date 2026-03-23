@@ -28,7 +28,7 @@ struct MenuBarPopoverTests {
     @Test("Minutes ago for 45 minutes")
     func fortyFiveMinutesAgo() {
         let date = Date().addingTimeInterval(-45 * 60)
-        #expect(relativeTimeString(date) == "45 min ago")
+        #expect(relativeTimeString(date) == "45 mins ago")
     }
 
     @Test("Hours ago for 1 hour")

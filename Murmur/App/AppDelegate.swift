@@ -24,6 +24,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         dictationViewModel: DictationViewModel
     ) {
         guard !setupCompleted else { return }
+
+        // Skip full app initialization when running as a test host.
+        // Tests create the specific components they need directly.
+        // Check both env var and loaded XCTest class for robustness.
+        guard ProcessInfo.processInfo.environment["XCTestBundlePath"] == nil,
+              NSClassFromString("XCTest") == nil else {
+            setupCompleted = true
+            return
+        }
+
         setupCompleted = true
 
         self.dictationViewModel = dictationViewModel
@@ -211,7 +221,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Claude provider
         if let claudeKey = keychain.load(for: "claude"), !claudeKey.isEmpty {
-            let model = UserDefaults.standard.string(forKey: "claudeModel") ?? "claude-sonnet-4-5-20241022"
+            let model = UserDefaults.standard.string(forKey: "claudeModel") ?? "claude-sonnet-4-6-20250514"
             providers.append(ClaudeProvider(apiKey: claudeKey, model: model))
             logger.info("buildAIPipeline: Claude provider configured (model=\(model))")
         }
@@ -247,5 +257,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         hotkeyMonitor?.stop()
+        hudWindow?.close()
+        hudWindow = nil
+        menuBarController = nil
     }
 }

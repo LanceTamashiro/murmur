@@ -25,6 +25,7 @@ final class AXTextInjector {
             return .failed(error: .noFocusedElement)
         }
 
+        // AXUIElement is a CFTypeRef — the cast always succeeds when the AX query returns .success
         let axElement = element as! AXUIElement
 
         // Skip web areas — browsers don't reliably support direct AX value setting
@@ -70,9 +71,9 @@ final class AXTextInjector {
         for _ in 0..<10 {
             var parent: AnyObject?
             let result = AXUIElementCopyAttributeValue(current, kAXParentAttribute as CFString, &parent)
-            guard result == .success, let parentElement = parent else { break }
+            guard result == .success, let parent else { break }
+            let parentAX = parent as! AXUIElement
 
-            let parentAX = parentElement as! AXUIElement
             if elementRole(parentAX) == "AXWebArea" {
                 return true
             }

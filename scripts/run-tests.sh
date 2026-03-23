@@ -37,6 +37,8 @@ SUITES=(
     "KeychainServiceTests"
     "AIPipelineIntegrationTests"
     "MenuBarPopoverTests"
+    "NoteExporterTests"
+    "KeychainEdgeCaseTests"
 )
 
 record_result() {
