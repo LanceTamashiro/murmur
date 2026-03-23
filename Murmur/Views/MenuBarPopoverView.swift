@@ -168,6 +168,30 @@ private struct NotePreviewView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // Header bar with back button
+            HStack {
+                Button(action: { dismiss() }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "chevron.left")
+                        Text("Back")
+                    }
+                    .font(.callout)
+                }
+                .buttonStyle(.plain)
+
+                Spacer()
+
+                Button(action: onOpenLibrary) {
+                    Image(systemName: "arrow.up.right.square")
+                }
+                .buttonStyle(.plain)
+                .help("Open in Notes Library")
+            }
+            .padding(.horizontal)
+            .padding(.vertical, 10)
+
+            Divider()
+
             ScrollView {
                 Text(note.bodyMarkdown)
                     .font(.body)
@@ -220,26 +244,6 @@ private struct NotePreviewView: View {
             .padding(.horizontal)
             .padding(.vertical, 8)
             .background(.bar)
-        }
-        .toolbar {
-            ToolbarItem(placement: .navigation) {
-                Button(action: { dismiss() }) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "chevron.left")
-                        Text("Back")
-                    }
-                    .font(.caption)
-                }
-                .buttonStyle(.plain)
-            }
-
-            ToolbarItem(placement: .primaryAction) {
-                Button(action: onOpenLibrary) {
-                    Image(systemName: "arrow.up.right.square")
-                }
-                .buttonStyle(.plain)
-                .help("Open in Notes Library")
-            }
         }
         .navigationBarBackButtonHidden(true)
     }
