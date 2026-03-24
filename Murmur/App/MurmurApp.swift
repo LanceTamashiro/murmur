@@ -37,7 +37,12 @@ struct MurmurApp: App {
     var body: some Scene {
         WindowGroup {
             Group {
-                if onboardingCompleted {
+                if MurmurApp.isTestEnvironment {
+                    // Show nothing when running as a test host — tests create
+                    // their own components directly. Rendering ContentView in
+                    // the test host triggers SwiftData/SwiftUI crashes.
+                    Color.clear
+                } else if onboardingCompleted {
                     ContentView()
                         .task {
                             appDelegate.setup(
