@@ -89,6 +89,17 @@ struct TextInjectionTests {
         return textEdit
     }
 
+    /// Quietly terminate TextEdit without triggering the "is not open anymore" dialog.
+    /// Brings the test host to front first so macOS doesn't warn about losing the active app.
+    private func terminateTextEditQuietly(_ textEdit: NSRunningApplication) {
+        // Bring test host (Murmur) back to front so TextEdit isn't the active app
+        NSApp.activate(ignoringOtherApps: true)
+        // Small delay to let activation take effect, then force-terminate
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            textEdit.forceTerminate()
+        }
+    }
+
     /// Inject text with a single retry if the first attempt fails.
     private func injectWithRetry(
         injector: AXTextInjector,
@@ -116,7 +127,7 @@ struct TextInjectionTests {
             return
         }
         defer {
-            textEdit.terminate()
+            terminateTextEditQuietly(textEdit)
         }
 
         let injector = AXTextInjector()
@@ -157,7 +168,7 @@ struct TextInjectionTests {
             return
         }
         defer {
-            textEdit.terminate()
+            terminateTextEditQuietly(textEdit)
         }
 
         let detector = AppContextDetector()
@@ -205,7 +216,7 @@ struct TextInjectionTests {
             return
         }
         defer {
-            textEdit.terminate()
+            terminateTextEditQuietly(textEdit)
         }
 
         // Bring Murmur (test host) to front — simulating the HUD stealing focus

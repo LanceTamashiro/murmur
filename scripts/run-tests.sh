@@ -89,6 +89,12 @@ cd "$PROJECT_ROOT"
 for suite in "${SUITES[@]}"; do
     echo "--- $suite ---"
 
+    # Kill any zombie Murmur instances relaunched by macOS after a test host exit.
+    # These aren't test hosts (parentProc=launchd, no XCTest env), so our guards
+    # don't fire and they crash in SwiftData, producing annoying dialogs.
+    pkill -9 -f 'Murmur.app/Contents/MacOS/Murmur' 2>/dev/null || true
+    sleep 0.2
+
     # Build (or rebuild) to ensure xctest bundle exists.
     # The beta crash can delete it, but build cache makes this fast.
     xcodebuild build-for-testing \
